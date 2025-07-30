@@ -17,7 +17,7 @@ export default function Home() {
         const { data: { session } } = await supabase.auth.getSession();
         
         if (session) {
-          // User is logged in, redirect to protected page
+          // User is logged in, redirect to protected page where profile setup will be handled
           router.push('/protected');
         }
       } catch (error) {
