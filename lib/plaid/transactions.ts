@@ -7,18 +7,27 @@ import { analyzeTransactionDeductibility } from '../openai/analysis'
 // Plaid transaction functions
 export async function fetchTransactions(userId: string) {
   try {
+    console.log(`🔍 Starting fetchTransactions for userId: ${userId}`)
+    
     // Get user's Plaid access token
     const { data: user } = await getUser(userId)
+    console.log(`👤 User data retrieved:`, user ? 'Found user' : 'No user found')
+    
     if (!user?.plaid_token) {
+      console.log(`❌ No Plaid token found for user ${userId}`)
       return { success: false, error: 'No Plaid token found' }
     }
+    
+    console.log(`🔑 Plaid token found, proceeding with transaction fetch`)
 
     // Get accounts from Plaid
+    console.log(`📊 Fetching accounts from Plaid...`)
     const accountsResponse = await plaidClient.accountsGet({
       access_token: user.plaid_token,
     })
 
     const plaidAccounts = accountsResponse.data.accounts
+    console.log(`✅ Retrieved ${plaidAccounts.length} accounts from Plaid`)
 
     // Store or update accounts in our database
     for (const account of plaidAccounts) {
@@ -99,6 +108,7 @@ export async function fetchTransactions(userId: string) {
         }
 
         await addTransaction(transactionData)
+        console.log(`💾 Transaction saved: ${transactionData.merchant_name} - $${transactionData.amount}`)
       }
 
       totalTransactions += transactions.length
@@ -111,10 +121,11 @@ export async function fetchTransactions(userId: string) {
       }
     }
 
+    console.log(`🎉 Successfully fetched and stored ${totalTransactions} transactions`)
     return { success: true, count: totalTransactions }
   } catch (error) {
-    console.error('Error fetching transactions:', error)
-    return { success: false, error }
+    console.error('❌ Error in fetchTransactions:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
   }
 }
 

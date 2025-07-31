@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY!
 )
 
 // Transaction database operations
@@ -36,9 +36,18 @@ export async function addTransaction(transactionData: {
   deductible_reason?: string
   deduction_score?: number
 }) {
-  return await supabase
+  console.log(`💾 Attempting to add transaction:`, transactionData)
+  const result = await supabase
     .from('transactions')
     .insert([transactionData])
+  
+  if (result.error) {
+    console.error(`❌ Database error adding transaction:`, result.error)
+  } else {
+    console.log(`✅ Transaction added successfully`)
+  }
+  
+  return result
 }
 
 export async function updateTransaction(transactionId: string, updates: {

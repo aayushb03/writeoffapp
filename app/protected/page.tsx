@@ -13,6 +13,7 @@ import { TransactionsListScreen } from "@/components/transactions-list-screen";
 import { DeductionsDetailScreen } from "@/components/deductions-detail-screen";
 import { ExpensesDetailScreen } from "@/components/expenses-detail-screen";
 import { BanksDetailScreen } from "@/components/banks-detail-screen";
+import { ProfitLossDetailScreen } from "@/components/profit-loss-detail-screen";
 import { getUserProfile } from "@/lib/database/profiles";
 import { testDatabaseConnection } from "@/lib/database/test";
 import { useEffect, useState } from "react";
@@ -43,7 +44,7 @@ export default function ProtectedPage() {
   const [user, setUser] = useState<any>(null);
   const [hasProfile, setHasProfile] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [currentScreen, setCurrentScreen] = useState<'dashboard' | 'settings' | 'debug' | 'add-expense' | 'receipt-upload' | 'tax-calendar' | 'transactions' | 'edit-expense' | 'deductions-detail' | 'expenses-detail' | 'banks-detail'>('dashboard');
+  const [currentScreen, setCurrentScreen] = useState<'dashboard' | 'settings' | 'debug' | 'add-expense' | 'receipt-upload' | 'tax-calendar' | 'transactions' | 'edit-expense' | 'deductions-detail' | 'expenses-detail' | 'banks-detail' | 'profit-loss-detail'>('dashboard');
   const [transactions, setTransactions] = useState<Transaction[]>([
     {
       id: '1',
@@ -198,6 +199,8 @@ export default function ProtectedPage() {
       setCurrentScreen('expenses-detail');
     } else if (screen === 'banks-detail') {
       setCurrentScreen('banks-detail');
+    } else if (screen === 'profit-loss-detail') {
+      setCurrentScreen('profit-loss-detail');
     }
     // You can add more screen navigation logic here
   };
@@ -362,6 +365,15 @@ export default function ProtectedPage() {
             // You can implement Plaid connection here or navigate to a connect screen
             setCurrentScreen('dashboard');
           }}
+        />
+      );
+    }
+
+    if (currentScreen === 'profit-loss-detail') {
+      return (
+        <ProfitLossDetailScreen
+          onNavigate={handleNavigate}
+          transactions={transactions}
         />
       );
     }

@@ -17,7 +17,7 @@
 
 "use client";
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { usePlaidLink } from 'react-plaid-link';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -40,6 +40,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import TaxSavingsChart from './tax-savings-chart';
 
 interface DashboardScreenProps {
   user: {
@@ -79,6 +80,33 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   const [bankConnected, setBankConnected] = useState(false);
   const [testingAI, setTestingAI] = useState(false);
   const [aiTestResult, setAiTestResult] = useState<any>(null);
+  const [realTransactions, setRealTransactions] = useState<any[]>([]);
+  const [loadingTransactions, setLoadingTransactions] = useState(false);
+
+  // Fetch real transactions from database
+  const fetchRealTransactions = async () => {
+    setLoadingTransactions(true);
+    try {
+      const response = await fetch(`/api/transactions?userId=${user.id}`);
+      const data = await response.json();
+      
+      if (data.success) {
+        console.log('Fetched real transactions:', data.transactions);
+        setRealTransactions(data.transactions);
+      } else {
+        console.error('Failed to fetch transactions:', data.error);
+      }
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+    } finally {
+      setLoadingTransactions(false);
+    }
+  };
+
+  // Fetch transactions on component mount
+  useEffect(() => {
+    fetchRealTransactions();
+  }, [user.id]);
   
   // Create link token when needed
   const createLinkToken = async () => {
@@ -121,6 +149,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     setPlaidError(null);
     
     try {
+      console.log('🔗 Exchanging public token for access token...');
       const response = await fetch('/api/plaid/exchange-public-token', {
         method: 'POST',
         headers: {
@@ -132,11 +161,18 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         }),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        throw new Error('Failed to connect bank account');
+        console.error('API Error Response:', {
+          status: response.status,
+          statusText: response.statusText,
+          data: data
+        });
+        const errorMessage = data?.error || data?.message || `HTTP ${response.status}: ${response.statusText}`;
+        throw new Error(errorMessage);
       }
 
-      const data = await response.json();
       setBankConnected(true);
       
       // Clear the link token so it can be regenerated if needed
@@ -159,6 +195,9 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         if (transactionResponse.ok) {
           const transactionData = await transactionResponse.json();
           console.log(`✅ Analyzed ${transactionData.count} transactions with AI`);
+          
+          // Fetch the updated transactions from database
+          await fetchRealTransactions();
         }
       } catch (error) {
         console.error('Error fetching/analyzing transactions:', error);
@@ -166,7 +205,8 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       
     } catch (err: unknown) {
       console.error('Error connecting bank:', err);
-      setPlaidError('Failed to connect bank account. Please try again.');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to connect bank account. Please try again.';
+      setPlaidError(errorMessage);
     } finally {
       setPlaidLoading(false);
     }
@@ -266,85 +306,69 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       open();
     }
   }, [linkToken, ready, open, plaidLoading]);
-  
-  const [stats, setStats] = useState({
-    totalDeductions: 8420.50,
-    trackedExpenses: 12650.75,
-    connectedBanks: 2,
-    taxSavings: 2526.15
-  });
 
   // Calculate real stats from transactions
   const calculateStats = () => {
-    const allTransactions = propTransactions?.length ? propTransactions : recentTransactions;
-    const expenses = allTransactions.filter(t => t.type === 'expense');
-    const deductibleExpenses = expenses.filter(t => t.isDeductible);
+    // Use real transactions if available, otherwise fall back to prop transactions
+    const allTransactions = realTransactions.length ? realTransactions : (propTransactions || []);
     
-    const totalExpenses = expenses.reduce((sum, t) => sum + t.amount, 0);
-    const totalDeductible = deductibleExpenses.reduce((sum, t) => sum + t.amount, 0);
-    const estimatedTaxSavings = totalDeductible * 0.3; // Assuming 30% tax rate
+    console.log('calculateStats called with:', {
+      realTransactionsCount: realTransactions.length,
+      propTransactionsCount: propTransactions?.length || 0,
+      allTransactionsCount: allTransactions.length
+    });
     
-    return {
+    if (!allTransactions || allTransactions.length === 0) {
+      console.log('No transactions found, returning zero stats');
+      return {
+        totalDeductions: 0,
+        trackedExpenses: 0,
+        totalRevenue: 0,
+        netProfitLoss: 0,
+        taxSavings: 0
+      };
+    }
+
+    // Calculate based on real transaction data from Plaid
+    const deductibleTransactions = allTransactions.filter(t => t.is_deductible === true);
+    const totalDeductible = deductibleTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+    
+    // All transactions are expenses in our system (Plaid amounts are positive for debits)
+    const totalExpenses = allTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+    
+    // For revenue, we'd need to categorize or identify income transactions
+    // For now, we'll separate based on categories or merchant names that indicate income
+    const incomeCategories = ['deposit', 'transfer', 'payroll', 'income'];
+    const incomeTransactions = allTransactions.filter(t => {
+      const category = (t.category || '').toLowerCase();
+      const merchant = (t.merchant_name || '').toLowerCase();
+      return incomeCategories.some(cat => category.includes(cat) || merchant.includes(cat));
+    });
+    
+    const totalRevenue = incomeTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+    const netProfitLoss = totalRevenue - totalExpenses;
+    
+    // Calculate tax savings (30% of deductible expenses)
+    const estimatedTaxSavings = totalDeductible * 0.3;
+
+    const stats = {
       totalDeductions: totalDeductible,
       trackedExpenses: totalExpenses,
-      connectedBanks: bankConnected ? stats.connectedBanks : 2,
+      totalRevenue: totalRevenue,
+      netProfitLoss: netProfitLoss,
       taxSavings: estimatedTaxSavings
     };
+    
+    console.log('Calculated stats:', stats);
+    return stats;
   };
 
-  const displayStats = calculateStats();
+  const displayStats = useMemo(() => calculateStats(), [realTransactions, propTransactions]);
 
-  const [recentTransactions] = useState<Transaction[]>([
-    {
-      id: '1',
-      description: 'Office Supplies - Staples',
-      amount: 149.99,
-      category: 'Office Supplies',
-      date: '2024-12-28',
-      type: 'expense',
-      isDeductible: true,
-      deductibleReason: 'Office supplies for business operations',
-      confidenceScore: 0.95
-    },
-    {
-      id: '2',
-      description: 'Adobe Creative Suite',
-      amount: 52.99,
-      category: 'Software & Subscriptions',
-      date: '2024-12-27',
-      type: 'expense',
-      isDeductible: true,
-      deductibleReason: 'Business software subscription',
-      confidenceScore: 0.90
-    },
-    {
-      id: '3',
-      description: 'Client Meeting Lunch',
-      amount: 85.50,
-      category: 'Meals & Entertainment',
-      date: '2024-12-26',
-      type: 'expense',
-      isDeductible: true,
-      deductibleReason: 'Business meal with client (50% deductible)',
-      confidenceScore: 0.85
-    },
-    {
-      id: '4',
-      description: 'Uber to Client Office',
-      amount: 24.75,
-      category: 'Travel & Transportation',
-      date: '2024-12-25',
-      type: 'expense',
-      isDeductible: true,
-      deductibleReason: 'Business travel expense',
-      confidenceScore: 0.92
-    }
-  ]);
-
-  // Use passed transactions or fall back to defaults
-  const displayTransactions = propTransactions?.length ? 
-    propTransactions.slice(0, 4).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : 
-    recentTransactions;
+  // Use real transactions if available, otherwise fall back to prop transactions or empty array
+  const displayTransactions = realTransactions.length ? 
+    realTransactions.slice(0, 4).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : 
+    (propTransactions?.slice(0, 4).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) || []);
 
   const [notifications] = useState([
     {
@@ -476,22 +500,37 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
 
           <Card 
             className="p-6 bg-white border-0 shadow-lg hover:shadow-xl transition-shadow cursor-pointer"
-            onClick={() => onNavigate('banks-detail')}
+            onClick={() => onNavigate('profit-loss-detail')}
           >
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-                {bankConnected ? (
-                  <CheckCircle className="w-6 h-6 text-emerald-600" />
-                ) : (
-                  <Building2 className="w-6 h-6 text-purple-600" />
-                )}
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                displayStats.netProfitLoss >= 0 
+                  ? 'bg-emerald-100' 
+                  : 'bg-red-100'
+              }`}>
+                <TrendingUp className={`w-6 h-6 ${
+                  displayStats.netProfitLoss >= 0 
+                    ? 'text-emerald-600' 
+                    : 'text-red-600'
+                }`} />
               </div>
               <div>
-                <p className="text-sm text-slate-600">Connected Banks</p>
-                <p className="text-2xl font-bold text-slate-900">{displayStats.connectedBanks}</p>
-                {bankConnected && (
-                  <p className="text-xs text-emerald-600 font-medium">Recently connected</p>
-                )}
+                <p className="text-sm text-slate-600">Net P/L</p>
+                <p className={`text-2xl font-bold ${
+                  displayStats.netProfitLoss >= 0 
+                    ? 'text-emerald-600' 
+                    : 'text-red-600'
+                }`}>
+                  {displayStats.netProfitLoss >= 0 ? '+' : ''}${displayStats.netProfitLoss.toLocaleString()}
+                </p>
+                <p className="text-xs text-slate-500 mt-1">
+                  {displayStats.netProfitLoss >= 0 ? 'Profit' : 'Loss'} this period
+                </p>
+                <div className="flex items-center gap-1 mt-1">
+                  <div className="text-xs text-slate-500">
+                    Revenue: ${displayStats.totalRevenue.toLocaleString()}
+                  </div>
+                </div>
               </div>
             </div>
           </Card>
@@ -516,6 +555,9 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">          
           {/* Left Column - Quick Actions & Recent Activity */}
           <div className="lg:col-span-2 space-y-6">
+            {/* Tax Savings Chart */}
+            <TaxSavingsChart transactions={realTransactions.length ? realTransactions : propTransactions} />
+
             {/* Quick Actions */}
             <Card className="p-8 bg-white border-0 shadow-xl">
               <div className="flex items-center justify-between mb-6">
@@ -707,40 +749,66 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
               </div>
 
               <div className="space-y-4">
-                {displayTransactions.map((transaction) => (
+                {loadingTransactions ? (
+                  <div className="text-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-blue-600" />
+                    <p className="text-sm text-slate-600">Loading transactions...</p>
+                  </div>
+                ) : displayTransactions.length === 0 ? (
+                  <div className="text-center py-8">
+                    <FileText className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                    <p className="text-sm text-slate-600 mb-2">No transactions found</p>
+                    <p className="text-xs text-slate-500">Connect your bank account to see transactions</p>
+                  </div>
+                ) : (
+                  displayTransactions.map((transaction) => (
                   <div 
                     key={transaction.id} 
                     className="flex items-center justify-between p-4 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
                     onClick={() => onNavigate('transactions')}
                   >
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                        <FileText className="w-5 h-5 text-blue-600" />
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                        transaction.type === 'income' 
+                          ? 'bg-emerald-100' 
+                          : 'bg-blue-100'
+                      }`}>
+                        {transaction.type === 'income' ? (
+                          <TrendingUp className="w-5 h-5 text-emerald-600" />
+                        ) : (
+                          <FileText className="w-5 h-5 text-blue-600" />
+                        )}
                       </div>
                       <div>
-                        <p className="font-medium text-slate-900">{transaction.description}</p>
+                        <p className="font-medium text-slate-900">
+                          {transaction.merchant_name || transaction.description || 'Unknown Transaction'}
+                        </p>
                         <div className="flex items-center gap-2 text-sm text-slate-600">
                           <span>{transaction.category}</span>
                           <span>•</span>
                           <span>{new Date(transaction.date).toLocaleDateString()}</span>
-                          {transaction.isDeductible && (
+                          <span>•</span>
+                          <span className={`font-medium ${
+                            transaction.type === 'income' 
+                              ? 'text-emerald-600' 
+                              : transaction.is_deductible 
+                                ? 'text-blue-600' 
+                                : 'text-slate-600'
+                          }`}>
+                            {transaction.type === 'income' ? 'Revenue' : transaction.is_deductible ? 'Tax Deductible' : 'Expense'}
+                          </span>
+                          {transaction.deduction_score && (
                             <>
                               <span>•</span>
-                              <span className="text-emerald-600 font-medium">Tax Deductible</span>
-                              {transaction.confidenceScore && (
-                                <>
-                                  <span>•</span>
-                                  <div className="flex items-center gap-1">
-                                    <span className="text-blue-600 font-medium">
-                                      🤖 {Math.round(transaction.confidenceScore * 100)}% AI
-                                    </span>
-                                  </div>
-                                </>
-                              )}
+                              <div className="flex items-center gap-1">
+                                <span className="text-purple-600 font-medium">
+                                  🤖 {Math.round((transaction.deduction_score || 0) * 100)}% AI
+                                </span>
+                              </div>
                             </>
                           )}
                         </div>
-                        {transaction.deductibleReason && (
+                        {transaction.deductibleReason && transaction.type === 'expense' && (
                           <p className="text-xs text-slate-500 mt-1 italic">
                             "{transaction.deductibleReason}"
                           </p>
@@ -748,10 +816,16 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="font-bold text-slate-900">${transaction.amount}</p>
+                      <p className={`font-bold ${
+                        transaction.type === 'income' 
+                          ? 'text-emerald-600' 
+                          : 'text-slate-900'
+                      }`}>
+                        {transaction.type === 'income' ? '+' : '-'}${(transaction.amount || 0).toLocaleString()}
+                      </p>
                     </div>
                   </div>
-                ))}
+                )))}
               </div>
 
               <div className="mt-6 text-center">

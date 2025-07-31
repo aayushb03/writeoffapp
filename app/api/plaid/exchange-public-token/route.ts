@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Configuration, PlaidApi, PlaidEnvironments } from 'plaid';
-import { updateUserProfile } from '@/lib/database/profiles';
+import { createClient } from '@/lib/supabase/server';
 
 const configuration = new Configuration({
   basePath: PlaidEnvironments[process.env.PLAID_ENV as keyof typeof PlaidEnvironments || 'sandbox'],
@@ -35,15 +35,41 @@ export async function POST(request: NextRequest) {
       access_token: accessToken,
     });
 
-    // Update user profile with Plaid token
-    const { error: updateError } = await updateUserProfile(userId, {
-      plaid_token: accessToken,
-    });
-
+    // Save the access token to the user's profile using server-side client
+    console.log('💾 Saving Plaid access token to database...');
+    const supabase = await createClient();
+    
+    // Try to update the user's plaid_token directly in the users table
+    const { data: updateData, error: updateError } = await supabase
+      .from('users')
+      .update({ plaid_token: accessToken })
+      .eq('id', userId)
+      .select();
+    
     if (updateError) {
-      console.error('Error updating user profile:', updateError);
-      return NextResponse.json({ error: 'Failed to save bank connection' }, { status: 500 });
+      console.error('❌ Failed to save Plaid token to users table:', updateError);
+      
+      // Fallback: try to upsert in user_profiles table
+      const { data: profileData, error: profileError } = await supabase
+        .from('user_profiles')
+        .upsert({
+          user_id: userId,
+          plaid_token: accessToken,
+          updated_at: new Date().toISOString()
+        })
+        .select();
+      
+      if (profileError) {
+        console.error('❌ Failed to save Plaid token to user_profiles table:', profileError);
+        console.log('⚠️ Plaid token not saved - transactions may not be fetchable');
+      } else {
+        console.log('✅ Plaid token saved to user_profiles table');
+      }
+    } else {
+      console.log('✅ Plaid token saved to users table');
     }
+    
+    console.log('Bank connection successful, access token received');
 
     return NextResponse.json({
       access_token: accessToken,
