@@ -11,7 +11,7 @@ export function HomeContent() {
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-muted/20"></div>
       
       <div className="relative min-h-screen flex flex-col justify-center px-4 py-6 sm:px-6 lg:px-8">
-        <div className="sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="w-full">
           {/* Logo and heading */}
           <div className="text-center space-y-3 mb-6">
             <div className="flex justify-center">
@@ -29,7 +29,7 @@ export function HomeContent() {
           </div>
 
           {/* Main content card */}
-          <div className="bg-card/80 backdrop-blur-xl rounded-2xl shadow-xl shadow-gray-900/5 ring-1 ring-border p-6 space-y-4">
+          <div className="bg-card/80 backdrop-blur-xl rounded-2xl shadow-xl shadow-gray-900/5 ring-1 ring-border p-6 space-y-4 max-w-md mx-auto">
             <div className="text-center space-y-2">
               <h2 className="text-lg font-semibold text-card-foreground">Get started</h2>
               <p className="text-xs text-muted-foreground">
@@ -56,7 +56,7 @@ export function HomeContent() {
           </div>
 
           {/* Feature highlights */}
-          <div className="mt-6 grid grid-cols-3 gap-3">
+          <div className="mt-6 grid grid-cols-3 gap-3 max-w-md mx-auto">
             <div className="text-center space-y-2 p-2">
               <div className="w-8 h-8 bg-gradient-to-br from-purple-100 to-purple-200 rounded-lg flex items-center justify-center mx-auto">
                 <svg className="w-4 h-4 text-purple-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">

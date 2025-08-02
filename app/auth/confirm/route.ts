@@ -1,30 +1,42 @@
-import { createClient } from "@/lib/supabase/server";
-import { type EmailOtpType } from "@supabase/supabase-js";
-import { redirect } from "next/navigation";
-import { type NextRequest } from "next/server";
+import { createClient } from '@/lib/supabase/server';
+import { redirect } from 'next/navigation';
+import { NextRequest } from 'next/server';
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const token_hash = searchParams.get("token_hash");
-  const type = searchParams.get("type") as EmailOtpType | null;
-  const next = searchParams.get("next") ?? "/protected"; // Redirect to protected page where profile setup is handled
+  try {
+    const { searchParams } = new URL(request.url);
+    const code = searchParams.get('code');
+    const next = searchParams.get('next') || '/protected';
 
-  if (token_hash && type) {
+    console.log('Server-side email confirmation params:', { code, next });
+
+    if (!code) {
+      console.error('No code provided in email confirmation');
+      redirect('/auth/error?error=No confirmation code provided');
+    }
+
     const supabase = await createClient();
 
-    const { error } = await supabase.auth.verifyOtp({
-      type,
-      token_hash,
+    // Try to verify the OTP on the server side
+    const { data, error } = await supabase.auth.verifyOtp({
+      type: 'signup',
+      token_hash: code,
     });
-    if (!error) {
-      // redirect user to protected page where profile setup will be handled
+
+    if (error) {
+      console.error('Server-side OTP verification error:', error);
+      redirect(`/auth/error?error=${encodeURIComponent(error.message)}`);
+    }
+
+    if (data.session) {
+      console.log('Server-side session created successfully');
       redirect(next);
     } else {
-      // redirect the user to an error page with some instructions
-      redirect(`/auth/error?error=${error?.message}`);
+      console.error('No session created on server side');
+      redirect('/auth/error?error=No session created');
     }
+  } catch (error) {
+    console.error('Server-side email confirmation error:', error);
+    redirect('/auth/error?error=Unexpected error during confirmation');
   }
-
-  // redirect the user to an error page with some instructions
-  redirect(`/auth/error?error=No token hash or type`);
-}
+} 

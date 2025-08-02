@@ -7,14 +7,41 @@ const supabase = createClient(
 
 // Transaction database operations
 export async function getTransactions(userId: string) {
-  return await supabase
+  const { data, error } = await supabase
     .from('transactions')
-    .select(`
-      *,
-      accounts!inner(user_id)
-    `)
-    .eq('accounts.user_id', userId)
-    .order('date', { ascending: false })
+    .select('*')
+    .order('date', { ascending: false });
+
+  console.log('🔍 Fetched transactions:', data);
+
+  if (error) {
+    console.error('Error fetching transactions:', error);
+    return { data: null, error };
+  }
+
+  // Transform database fields to match UI expectations
+  const transformedTransactions = data?.map(transaction => ({
+    id: transaction.trans_id,
+    description: transaction.merchant_name || 'Unknown Transaction',
+    amount: transaction.amount,
+    category: transaction.category,
+    date: transaction.date,
+    type: transaction.amount >= 0 ? 'income' : 'expense',
+    isDeductible: transaction.is_deductible || false,
+    deductibleReason: transaction.deductible_reason,
+    confidenceScore: transaction.deduction_score,
+    // Keep original fields for debugging
+    merchant_name: transaction.merchant_name,
+    account_id: transaction.account_id,
+  })) || [];
+
+  console.log('🔍 Fetched and transformed transactions:', {
+    originalCount: data?.length || 0,
+    transformedCount: transformedTransactions.length,
+    sampleTransaction: transformedTransactions[0],
+  });
+
+  return { data: transformedTransactions, error: null };
 }
 
 export async function getTransactionsByAccount(accountId: string) {

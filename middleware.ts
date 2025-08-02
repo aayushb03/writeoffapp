@@ -14,8 +14,9 @@ export const config = {
      * - favicon.ico (favicon file)
      * - images - .svg, .png, .jpg, .jpeg, .gif, .webp
      * - api/openai routes (OpenAI analysis endpoints)
+     * - api/setup-tables and api/test-accounts-table (setup and test endpoints)
      * Feel free to modify this pattern to include more paths.
      */
-    "/((?!_next/static|_next/image|favicon.ico|api/openai|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/openai|api/setup-tables|api/test-accounts-table|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

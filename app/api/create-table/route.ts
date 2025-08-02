@@ -25,32 +25,64 @@ export async function POST() {
           UNIQUE(user_id)
         );
 
+        -- Create accounts table for storing Plaid account information
+        CREATE TABLE IF NOT EXISTS accounts (
+          id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+          account_id TEXT UNIQUE NOT NULL,
+          user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+          name TEXT,
+          mask TEXT,
+          type TEXT,
+          subtype TEXT,
+          institution_id TEXT,
+          last_cursor TEXT,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+
         -- Create an index on user_id for faster lookups
         CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id ON user_profiles(user_id);
+        CREATE INDEX IF NOT EXISTS idx_accounts_user_id ON accounts(user_id);
+        CREATE INDEX IF NOT EXISTS idx_accounts_account_id ON accounts(account_id);
 
         -- Enable Row Level Security (RLS)
         ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
 
         -- Create policy for users to only access their own profile
         DROP POLICY IF EXISTS "Users can only access their own profile" ON user_profiles;
         CREATE POLICY "Users can only access their own profile" ON user_profiles
         FOR ALL USING (auth.uid() = user_id);
+
+        -- Create policy for users to only access their own accounts
+        DROP POLICY IF EXISTS "Users can only access their own accounts" ON accounts;
+        CREATE POLICY "Users can only access their own accounts" ON accounts
+        FOR ALL USING (auth.uid() = user_id);
       `
     });
 
-    // Test the table by trying to select from it
-    const { data: testData, error: testError } = await supabase
+    // Test the tables by trying to select from them
+    const { data: testProfiles, error: testProfilesError } = await supabase
       .from('user_profiles')
+      .select('*', { count: 'exact', head: true });
+
+    const { data: testAccounts, error: testAccountsError } = await supabase
+      .from('accounts')
       .select('*', { count: 'exact', head: true });
 
     return NextResponse.json({
       success: true,
-      message: 'user_profiles table setup attempted',
+      message: 'Tables setup attempted',
       rpcResult: { data, error: error?.message },
-      tableTest: {
-        works: !testError,
-        error: testError?.message,
-        errorCode: testError?.code
+      userProfilesTest: {
+        works: !testProfilesError,
+        error: testProfilesError?.message,
+        errorCode: testProfilesError?.code
+      },
+      accountsTest: {
+        works: !testAccountsError,
+        error: testAccountsError?.message,
+        errorCode: testAccountsError?.code
       }
     });
 

@@ -37,10 +37,14 @@ import {
   Filter,
   Loader2,
   CheckCircle,
-  Sparkles
+  Sparkles,
+  AlertCircle
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import TaxSavingsChart from './tax-savings-chart';
+import { createLinkToken, exchangePublicToken, getAccountBalances, syncTransactions } from '@/lib/api';
+import { getTransactions } from '@/lib/database/transactions';
+import { getUserProfile } from '@/lib/database/profiles';
 
 interface DashboardScreenProps {
   user: {
@@ -82,19 +86,56 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   const [aiTestResult, setAiTestResult] = useState<any>(null);
   const [realTransactions, setRealTransactions] = useState<any[]>([]);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
+  const [accountBalances, setAccountBalances] = useState<any[]>([]);
 
-  // Fetch real transactions from database
+  // Check if bank is connected on component mount
+  useEffect(() => {
+    const checkBankConnection = async () => {
+      try {
+        // Check if user has a Plaid token in their profile
+        const { data: profile, error } = await getUserProfile(user.id);
+        
+        if (profile?.plaid_token) {
+          setBankConnected(true);
+        } else {
+          setBankConnected(false);
+        }
+      } catch (error) {
+        console.error('Error checking bank connection:', error);
+        setBankConnected(false);
+      }
+    };
+
+    checkBankConnection();
+  }, [user.id]);
+
+  // Fetch real transactions from database and sync from Plaid
   const fetchRealTransactions = async () => {
     setLoadingTransactions(true);
     try {
-      const response = await fetch(`/api/transactions?userId=${user.id}`);
-      const data = await response.json();
+      // First, sync transactions from Plaid
+      console.log('🔄 Syncing transactions from Plaid...');
+      const syncResult = await syncTransactions(user.id);
       
-      if (data.success) {
-        console.log('Fetched real transactions:', data.transactions);
-        setRealTransactions(data.transactions);
+      if (syncResult.success) {
+        console.log(`✅ Synced ${syncResult.transactionsSaved} new transactions from Plaid`);
       } else {
-        console.error('Failed to fetch transactions:', data.error);
+        console.error('❌ Failed to sync transactions:', syncResult.error);
+      }
+
+      // Then fetch all transactions from database
+      console.log('📊 Fetching transactions from database...');
+      const { data: transactions, error } = await getTransactions(user.id);
+      
+      if (error) {
+        console.error('Failed to fetch transactions:', error);
+      } else {
+        console.log('📋 Raw transactions from database:', transactions);
+        console.log('📊 Transaction count:', transactions?.length || 0);
+        if (transactions && transactions.length > 0) {
+          console.log('📋 Sample transaction:', transactions[0]);
+        }
+        setRealTransactions(transactions || []);
       }
     } catch (error) {
       console.error('Error fetching transactions:', error);
@@ -105,36 +146,28 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
 
   // Fetch transactions on component mount
   useEffect(() => {
-    fetchRealTransactions();
-  }, [user.id]);
+    if (bankConnected) {
+      fetchRealTransactions();
+    }
+  }, [user.id, bankConnected]);
   
   // Create link token when needed
-  const createLinkToken = async () => {
+  const createLinkTokenHandler = async () => {
     console.log('Creating link token for user:', user.id);
     
     try {
       setPlaidLoading(true);
       setPlaidError(null);
       
-      const response = await fetch('/api/plaid/create-link-token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ userId: user.id }),
-      });
-
-      console.log('Link token response status:', response.status);
+      const { success, linkToken: token, error } = await createLinkToken(user.id);
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Link token error response:', errorText);
-        throw new Error('Failed to create link token');
+      if (success && token) {
+        console.log('Link token created successfully');
+        setLinkToken(token);
+      } else {
+        console.error('Link token error:', error);
+        throw new Error(typeof error === 'string' ? error : 'Failed to create link token');
       }
-
-      const data = await response.json();
-      console.log('Link token created successfully:', data.link_token ? 'Yes' : 'No');
-      setLinkToken(data.link_token);
     } catch (err: unknown) {
       console.error('Error creating link token:', err);
       setPlaidError('Failed to initialize bank connection. Please try again.');
@@ -150,27 +183,11 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     
     try {
       console.log('🔗 Exchanging public token for access token...');
-      const response = await fetch('/api/plaid/exchange-public-token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          public_token,
-          userId: user.id 
-        }),
-      });
+      const { success, error } = await exchangePublicToken(public_token, user.id);
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        console.error('API Error Response:', {
-          status: response.status,
-          statusText: response.statusText,
-          data: data
-        });
-        const errorMessage = data?.error || data?.message || `HTTP ${response.status}: ${response.statusText}`;
-        throw new Error(errorMessage);
+      if (!success) {
+        console.error('API Error Response:', error);
+        throw new Error(typeof error === 'string' ? error : 'Failed to exchange token');
       }
 
       setBankConnected(true);
@@ -178,30 +195,17 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       // Clear the link token so it can be regenerated if needed
       setLinkToken(null);
       
-      // Show success message (you could add a toast here)
-      console.log('Bank connected successfully:', data);
+      // Show success message
+      console.log('Bank connected successfully');
       
-      // Test fetching and analyzing transactions automatically
-      console.log('🤖 Starting automatic transaction analysis...');
-      try {
-        const transactionResponse = await fetch('/api/plaid/transactions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ userId: user.id }),
-        });
-
-        if (transactionResponse.ok) {
-          const transactionData = await transactionResponse.json();
-          console.log(`✅ Analyzed ${transactionData.count} transactions with AI`);
-          
-          // Fetch the updated transactions from database
-          await fetchRealTransactions();
-        }
-      } catch (error) {
-        console.error('Error fetching/analyzing transactions:', error);
+      // Fetch updated account balances
+      const { success: balanceSuccess, accounts } = await getAccountBalances(user.id);
+      if (balanceSuccess && accounts) {
+        setAccountBalances(accounts);
       }
+      
+      // Fetch transactions after connection
+      await fetchRealTransactions();
       
     } catch (err: unknown) {
       console.error('Error connecting bank:', err);
@@ -238,7 +242,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       
       if (!linkToken) {
         console.log('No link token, creating one...');
-        await createLinkToken();
+        await createLinkTokenHandler();
       } else if (ready) {
         console.log('Opening Plaid Link...');
         open();
@@ -391,11 +395,169 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     }
   ]);
 
+  // Show bank connection required screen if bank is not connected
+  if (!bankConnected) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+        {/* Header */}
+        <div className="bg-white border-b border-blue-100 sticky top-0 z-50 shadow-sm">
+          <div className="w-full px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="h-10 w-32 bg-blue-600 rounded-lg flex items-center justify-center">
+                  <span className="text-white font-bold text-lg">WriteOff</span>
+                </div>
+                <div>
+                  <h1 className="text-xl font-semibold text-slate-900">
+                    Welcome back, <span className="text-blue-600 font-bold">{user?.user_metadata?.name || user?.email}</span>
+                  </h1>
+                  <p className="text-sm text-slate-600">Connect your bank to get started</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <Button 
+                  onClick={() => onNavigate('settings')}
+                  variant="outline" 
+                  size="sm" 
+                  className="gap-2"
+                >
+                  <Settings className="w-4 h-4" />
+                  Settings
+                </Button>
+                <Button 
+                  onClick={onSignOut}
+                  variant="outline" 
+                  size="sm" 
+                  className="gap-2 text-red-600 border-red-200 hover:bg-red-50"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="w-full px-6">
+          {/* Bank Connection Required */}
+          <div className="text-center py-8">
+            <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Building2 className="w-10 h-10 text-blue-600" />
+            </div>
+            
+            <h2 className="text-2xl font-bold text-slate-900 mb-3">
+              Connect Your Bank Account
+            </h2>
+            
+            <p className="text-base text-slate-600 mb-6">
+              To start tracking your business expenses and maximizing tax deductions, 
+              you'll need to connect your bank account. This allows us to automatically 
+              import and analyze your transactions.
+            </p>
+
+            <div className="bg-white rounded-2xl shadow-xl p-6 mx-auto mb-6" style={{ maxWidth: '500px' }}>
+              <div className="space-y-3 mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center">
+                    <CheckCircle className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <span className="text-sm text-slate-700">Secure bank-level encryption</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center">
+                    <CheckCircle className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <span className="text-sm text-slate-700">Automatic transaction import</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center">
+                    <CheckCircle className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <span className="text-sm text-slate-700">AI-powered tax analysis</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center">
+                    <CheckCircle className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <span className="text-sm text-slate-700">Real-time deduction tracking</span>
+                </div>
+              </div>
+
+              <Button 
+                onClick={handleConnectBank}
+                disabled={plaidLoading}
+                className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-all duration-200 disabled:opacity-50"
+              >
+                {plaidLoading ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Connecting...
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4" />
+                    Connect Bank Account
+                  </div>
+                )}
+              </Button>
+            </div>
+
+            {/* Alternative Actions */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3" style={{ maxWidth: '600px', margin: '0 auto' }}>
+              <Button 
+                onClick={() => onNavigate('add-expense')}
+                variant="outline"
+                className="h-10 border-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50 rounded-xl"
+              >
+                <PlusCircle className="w-4 h-4 mr-2" />
+                Add Expense Manually
+              </Button>
+              
+              <Button 
+                onClick={() => onNavigate('receipt-upload')}
+                variant="outline"
+                className="h-10 border-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50 rounded-xl"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                Upload Receipt
+              </Button>
+            </div>
+          </div>
+
+          {/* Plaid Error Display */}
+          {plaidError && (
+            <div style={{ maxWidth: '500px', margin: '0 auto' }}>
+              <Card className="p-4 bg-red-50 border-red-200 shadow-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 bg-red-100 rounded-full flex items-center justify-center">
+                    <AlertCircle className="w-4 h-4 text-red-600" />
+                  </div>
+                  <div>
+                    <p className="text-red-800 font-medium text-sm">Connection Error</p>
+                    <p className="text-red-600 text-xs">{plaidError}</p>
+                  </div>
+                  <Button 
+                    onClick={() => setPlaidError(null)}
+                    variant="outline"
+                    size="sm"
+                    className="ml-auto text-red-600 border-red-300 hover:bg-red-100"
+                  >
+                    Dismiss
+                  </Button>
+                </div>
+              </Card>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       {/* Header */}
       <div className="bg-white border-b border-blue-100 sticky top-0 z-50 shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-4">
+        <div className="w-full px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="h-10 w-32 bg-blue-600 rounded-lg flex items-center justify-center">
@@ -465,7 +627,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-6">
+      <div className="w-full px-6">
         {/* Quick Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <Card 

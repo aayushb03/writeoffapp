@@ -16,6 +16,11 @@ export async function getAccounts(userId: string) {
 export async function addAccount(accountData: {
   account_id: string
   user_id: string
+  name?: string
+  mask?: string
+  type?: string
+  subtype?: string
+  institution_id?: string
   last_cursor?: string
 }) {
   return await supabase
@@ -24,6 +29,11 @@ export async function addAccount(accountData: {
 }
 
 export async function updateAccount(accountId: string, updates: {
+  name?: string
+  mask?: string
+  type?: string
+  subtype?: string
+  institution_id?: string
   last_cursor?: string
 }) {
   return await supabase

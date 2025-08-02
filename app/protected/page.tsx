@@ -45,71 +45,7 @@ export default function ProtectedPage() {
   const [hasProfile, setHasProfile] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [currentScreen, setCurrentScreen] = useState<'dashboard' | 'settings' | 'debug' | 'add-expense' | 'receipt-upload' | 'tax-calendar' | 'transactions' | 'edit-expense' | 'deductions-detail' | 'expenses-detail' | 'banks-detail' | 'profit-loss-detail'>('dashboard');
-  const [transactions, setTransactions] = useState<Transaction[]>([
-    {
-      id: '1',
-      description: 'Office Supplies - Staples',
-      amount: 149.99,
-      category: 'Office Supplies',
-      date: '2024-12-28',
-      type: 'expense',
-      isDeductible: true
-    },
-    {
-      id: '2',
-      description: 'Adobe Creative Suite',
-      amount: 52.99,
-      category: 'Software & Subscriptions',
-      date: '2024-12-27',
-      type: 'expense',
-      isDeductible: true
-    },
-    {
-      id: '3',
-      description: 'Client Meeting Lunch',
-      amount: 85.50,
-      category: 'Meals & Entertainment',
-      date: '2024-12-26',
-      type: 'expense',
-      isDeductible: true
-    },
-    {
-      id: '4',
-      description: 'Uber to Client Office',
-      amount: 24.75,
-      category: 'Travel & Transportation',
-      date: '2024-12-25',
-      type: 'expense',
-      isDeductible: true
-    },
-    {
-      id: '5',
-      description: 'MacBook Pro 16"',
-      amount: 2399.99,
-      category: 'Equipment & Hardware',
-      date: '2024-12-20',
-      type: 'expense',
-      isDeductible: true
-    },
-    {
-      id: '6',
-      description: 'Website Domain Renewal',
-      amount: 12.99,
-      category: 'Professional Services',
-      date: '2024-12-18',
-      type: 'expense',
-      isDeductible: true
-    },
-    {
-      id: '7',
-      description: 'Client Payment - Web Design',
-      amount: 1500.00,
-      category: 'Professional Services',
-      date: '2024-12-15',
-      type: 'income',
-      isDeductible: false
-    }
-  ]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const router = useRouter();
   const supabase = createClient();
@@ -169,10 +105,15 @@ export default function ProtectedPage() {
     // Optionally redirect to dashboard or next step
   };
 
-  const handleBack = () => {
+  const handleBack = async () => {
     // Handle logout or back to login
-    supabase.auth.signOut();
-    router.push("/");
+    try {
+      await supabase.auth.signOut();
+      router.push("/");
+    } catch (error) {
+      console.error('Error signing out:', error);
+      router.push("/");
+    }
   };
 
   // Handle navigation between screens
@@ -206,8 +147,14 @@ export default function ProtectedPage() {
   };
 
   // Handle sign out
-  const handleSignOut = () => {
-    router.push("/");
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut();
+      router.push("/");
+    } catch (error) {
+      console.error('Error signing out:', error);
+      router.push("/");
+    }
   };
 
   // Handle saving transactions
