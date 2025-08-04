@@ -106,6 +106,71 @@ export async function syncTransactions(userId: string) {
   }
 }
 
+// Analyze transactions using OpenAI
+export async function analyzeTransactions(userId: string) {
+  try {
+    const response = await fetch('/api/openai/analyze-transactions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId }),
+    });
+
+    const result = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to analyze transactions');
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Error analyzing transactions:', error);
+    throw error;
+  }
+}
+
+// Test database update functionality
+export async function testDatabaseUpdate(userId: string) {
+  try {
+    const response = await fetch('/api/test-update', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId }),
+    });
+
+    const result = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to test database update');
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Error testing database update:', error);
+    throw error;
+  }
+}
+
+// Test service role client functionality
+export async function testServiceRole() {
+  try {
+    const response = await fetch('/api/test-service-role');
+    const result = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to test service role client');
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Error testing service role client:', error);
+    throw error;
+  }
+}
+
 // Convenience exports
 export {
   // Database - Users

@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   state TEXT NOT NULL,
   filing_status TEXT NOT NULL,
   plaid_token TEXT,
+  last_cursor TEXT, -- Plaid cursor for transaction syncing (moved from accounts)
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
 
@@ -45,7 +46,7 @@ BEFORE UPDATE ON user_profiles
 FOR EACH ROW 
 EXECUTE FUNCTION update_updated_at_column();
 
--- Enhanced accounts table with Plaid fields
+-- Enhanced accounts table with Plaid fields (removed last_cursor)
 CREATE TABLE IF NOT EXISTS accounts (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   account_id TEXT UNIQUE NOT NULL,
@@ -55,7 +56,6 @@ CREATE TABLE IF NOT EXISTS accounts (
   type TEXT,
   subtype TEXT,
   institution_id TEXT,
-  last_cursor TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

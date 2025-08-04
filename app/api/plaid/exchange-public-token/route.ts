@@ -112,81 +112,73 @@ export async function POST(request: NextRequest) {
     console.log('🔄 Fetching transactions for all accounts...');
     let totalTransactionsSaved = 0;
 
-    for (const account of accountsResponse.data.accounts) {
-      try {
-        console.log(`📊 Fetching transactions for account: ${account.name} (${account.account_id})`);
-        
-        // Get the current cursor for this account (if any)
-        const { data: accountData } = await supabase
-          .from('accounts')
-          .select('last_cursor')
-          .eq('account_id', account.account_id)
-          .single();
+    // Get the current cursor for this user (if any)
+    const { data: userProfileData } = await supabase
+      .from('user_profiles')
+      .select('last_cursor')
+      .eq('user_id', userId)
+      .single();
 
-        const cursor = accountData?.last_cursor || null;
-        
-        // Fetch transactions using Plaid's transactionsSync
-        const transactionsResponse = await client.transactionsSync({
-          access_token: accessToken,
-          options: {
-            include_personal_finance_category: true,
-            include_logo_and_counterparty_beta: true,
-          },
-        });
+    const cursor = userProfileData?.last_cursor || null;
+    console.log(`📊 Using cursor for user ${userId}:`, cursor);
 
-        // Filter transactions for this specific account
-        const accountTransactions = transactionsResponse.data.added.filter(
-          (transaction: any) => transaction.account_id === account.account_id
-        );
+    // Fetch transactions using Plaid's transactionsSync (for all accounts)
+    const transactionsResponse = await client.transactionsSync({
+      access_token: accessToken,
+      options: {
+        include_personal_finance_category: true,
+        include_logo_and_counterparty_beta: true,
+      },
+    });
 
-        console.log(`📈 Found ${accountTransactions.length} new transactions for account ${account.name}`);
+    // Process all transactions (no need to filter by account since we're processing all)
+    const allTransactions = transactionsResponse.data.added;
+    console.log(`📈 Found ${allTransactions.length} total transactions for user ${userId}`);
 
-        if (accountTransactions.length > 0) {
-          // Save transactions to database
-          const transactionsToSave = accountTransactions.map((transaction: any) => ({
-            trans_id: transaction.transaction_id,
-            account_id: transaction.account_id,
-            date: transaction.date,
-            amount: transaction.amount,
-            merchant_name: transaction.merchant_name || transaction.name,
-            category: transaction.personal_finance_category?.[0] || transaction.category?.[0] || 'Other',
-            is_deductible: false, // Will be updated by AI analysis
-            deductible_reason: null,
-            deduction_score: 0,
-          }));
+    if (allTransactions.length > 0) {
+      // Save transactions to database
+      const transactionsToSave = allTransactions.map((transaction: any) => ({
+        trans_id: transaction.transaction_id,
+        account_id: transaction.account_id,
+        date: transaction.date,
+        amount: transaction.amount,
+        merchant_name: transaction.merchant_name || transaction.name,
+        category: transaction.personal_finance_category?.detailed || transaction.category?.[0] || 'Other',
+        is_deductible: false, // Will be updated by AI analysis
+        deductible_reason: null,
+        deduction_score: 0,
+      }));
 
-          const { data: savedTransactions, error: transactionsError } = await supabase
-            .from('transactions')
-            .upsert(transactionsToSave, { onConflict: 'trans_id' })
-            .select();
 
-          if (transactionsError) {
-            console.error(`❌ Failed to save transactions for account ${account.name}:`, transactionsError);
-          } else {
-            console.log(`✅ Saved ${savedTransactions?.length || 0} transactions for account ${account.name}`);
-            totalTransactionsSaved += savedTransactions?.length || 0;
-          }
+      const { data: savedTransactions, error: transactionsError } = await supabase
+        .from('transactions')
+        .upsert(transactionsToSave, { onConflict: 'trans_id' })
+        .select();
 
-          // Update the cursor for this account
-          const newCursor = transactionsResponse.data.next_cursor;
-          if (newCursor) {
-            const { error: cursorError } = await supabase
-              .from('accounts')
-              .update({ last_cursor: newCursor })
-              .eq('account_id', account.account_id);
-
-            if (cursorError) {
-              console.error(`❌ Failed to update cursor for account ${account.name}:`, cursorError);
-            } else {
-              console.log(`✅ Updated cursor for account ${account.name}: ${newCursor}`);
-            }
-          }
-        } else {
-          console.log(`📭 No new transactions for account ${account.name}`);
-        }
-      } catch (error) {
-        console.error(`❌ Error fetching transactions for account ${account.name}:`, error);
+      if (transactionsError) {
+        console.error(`❌ Failed to save transactions for user ${userId}:`, transactionsError);
+      } else {
+        console.log(`✅ Successfully saved ${savedTransactions?.length || 0} transactions for user ${userId}`);
+        console.log('Saved transaction IDs:', savedTransactions?.map((t: any) => t.trans_id) || []);
+        totalTransactionsSaved = savedTransactions?.length || 0;
       }
+
+      // Update the cursor for this user
+      const newCursor = transactionsResponse.data.next_cursor;
+      if (newCursor) {
+        const { error: cursorError } = await supabase
+          .from('user_profiles')
+          .update({ last_cursor: newCursor })
+          .eq('user_id', userId);
+
+        if (cursorError) {
+          console.error(`❌ Failed to update cursor for user ${userId}:`, cursorError);
+        } else {
+          console.log(`✅ Updated cursor for user ${userId}: ${newCursor}`);
+        }
+      }
+    } else {
+      console.log(`📭 No new transactions for user ${userId}`);
     }
     
     console.log(`🎉 Bank connection successful! Saved ${totalTransactionsSaved} total transactions`);

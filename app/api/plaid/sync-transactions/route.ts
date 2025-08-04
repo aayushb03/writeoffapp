@@ -24,10 +24,10 @@ export async function POST(request: NextRequest) {
 
     const supabase = await createClient();
 
-    // Get user's Plaid access token
+    // Get user's Plaid access token and cursor
     const { data: userProfile, error: profileError } = await supabase
       .from('user_profiles')
-      .select('plaid_token')
+      .select('plaid_token, last_cursor')
       .eq('user_id', userId)
       .single();
 
@@ -35,10 +35,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No Plaid token found for user' }, { status: 404 });
     }
 
-    // Get all user's accounts with their cursors
+    // Get all user's accounts (for reference, but cursor is now at user level)
     const { data: accounts, error: accountsError } = await supabase
       .from('accounts')
-      .select('account_id, name, last_cursor')
+      .select('account_id, name')
       .eq('user_id', userId);
 
     if (accountsError) {
@@ -46,157 +46,133 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch accounts' }, { status: 500 });
     }
 
-    console.log(`🔄 Syncing transactions for ${accounts?.length || 0} accounts...`);
+    console.log(`🔄 Syncing transactions for user ${userId} with ${accounts?.length || 0} accounts...`);
     let totalTransactionsSaved = 0;
-    let totalAccountsProcessed = 0;
 
-    for (const account of accounts || []) {
-      try {
-        console.log(`📊 Syncing transactions for account: ${account.name} (${account.account_id})`);
-        
-        // Use stored cursor or null for initial sync
-        const cursor = account.last_cursor || null;
-        
-        // Fetch transactions using Plaid's transactionsSync
-        const transactionsResponse = await client.transactionsSync({
-          access_token: userProfile.plaid_token,
-          options: {
-            include_personal_finance_category: true,
-            include_logo_and_counterparty_beta: true,
-          },
+    try {
+      console.log(`📊 Using cursor for user ${userId}:`, userProfile.last_cursor);
+      
+      // Fetch transactions using Plaid's transactionsSync (for all accounts)
+      const transactionsResponse = await client.transactionsSync({
+        access_token: userProfile.plaid_token,
+        options: {
+          include_personal_finance_category: true,
+          include_logo_and_counterparty_beta: true,
+        },
+      });
+
+      console.log(`📊 Plaid transactionsSync response for user ${userId}:`);
+      console.log('Response structure:', {
+        hasAdded: !!transactionsResponse.data.added,
+        hasModified: !!transactionsResponse.data.modified,
+        hasRemoved: !!transactionsResponse.data.removed,
+        hasNextCursor: !!transactionsResponse.data.next_cursor,
+        addedCount: transactionsResponse.data.added?.length || 0,
+        modifiedCount: transactionsResponse.data.modified?.length || 0,
+        removedCount: transactionsResponse.data.removed?.length || 0,
+      });
+
+      // Log all transactions returned by Plaid
+      console.log(`📋 All transactions from Plaid for user ${userId}:`);
+      transactionsResponse.data.added.forEach((transaction: any, index: number) => {
+        console.log(`Transaction ${index + 1}:`, {
+          transaction_id: transaction.transaction_id,
+          account_id: transaction.account_id,
+          date: transaction.date,
+          amount: transaction.amount,
+          name: transaction.name,
+          merchant_name: transaction.merchant_name,
+          category: transaction.category,
+          personal_finance_category: transaction.personal_finance_category,
+          payment_channel: transaction.payment_channel,
+          pending: transaction.pending,
+          account_owner: transaction.account_owner,
+          iso_currency_code: transaction.iso_currency_code,
+          unofficial_currency_code: transaction.unofficial_currency_code,
+          check_number: transaction.check_number,
+          payment_processor: transaction.payment_processor,
+          reference_number: transaction.reference_number,
+          authorized_date: transaction.authorized_date,
+          authorized_datetime: transaction.authorized_datetime,
+          datetime: transaction.datetime,
+          location: transaction.location,
+          logo_url: transaction.logo_url,
+          counterparties: transaction.counterparties,
         });
+      });
 
-        console.log(`📊 Plaid transactionsSync response for account ${account.name}:`);
-        console.log('Response structure:', {
-          hasAdded: !!transactionsResponse.data.added,
-          hasModified: !!transactionsResponse.data.modified,
-          hasRemoved: !!transactionsResponse.data.removed,
-          hasNextCursor: !!transactionsResponse.data.next_cursor,
-          addedCount: transactionsResponse.data.added?.length || 0,
-          modifiedCount: transactionsResponse.data.modified?.length || 0,
-          removedCount: transactionsResponse.data.removed?.length || 0,
-        });
+      // Process all transactions (no need to filter by account since we're processing all)
+      const allTransactions = transactionsResponse.data.added;
+      console.log(`📈 Found ${allTransactions.length} total transactions for user ${userId}`);
 
-        // Log all transactions returned by Plaid
-        console.log(`📋 All transactions from Plaid for account ${account.name}:`);
-        transactionsResponse.data.added.forEach((transaction: any, index: number) => {
-          console.log(`Transaction ${index + 1}:`, {
-            transaction_id: transaction.transaction_id,
-            account_id: transaction.account_id,
-            date: transaction.date,
-            amount: transaction.amount,
-            name: transaction.name,
-            merchant_name: transaction.merchant_name,
-            category: transaction.category,
-            personal_finance_category: transaction.personal_finance_category,
-            payment_channel: transaction.payment_channel,
-            pending: transaction.pending,
-            account_owner: transaction.account_owner,
-            iso_currency_code: transaction.iso_currency_code,
-            unofficial_currency_code: transaction.unofficial_currency_code,
-            check_number: transaction.check_number,
-            payment_processor: transaction.payment_processor,
-            reference_number: transaction.reference_number,
-            authorized_date: transaction.authorized_date,
-            authorized_datetime: transaction.authorized_datetime,
-            datetime: transaction.datetime,
-            location: transaction.location,
-            logo_url: transaction.logo_url,
-            counterparties: transaction.counterparties,
+      if (allTransactions.length > 0) {
+        // Save transactions to database
+        const transactionsToSave = allTransactions.map((transaction: any) => ({
+          trans_id: transaction.transaction_id,
+          account_id: transaction.account_id,
+          date: transaction.date,
+          amount: transaction.amount,
+          merchant_name: transaction.merchant_name || transaction.name,
+          category: transaction.personal_finance_category?.[0] || transaction.category?.[0] || 'Other',
+          // Don't set analysis fields here - they should only be set by AI analysis
+          // is_deductible, deductible_reason, deduction_score will be preserved if they exist
+        }));
+
+        console.log(`💾 Formatted transactions to save for user ${userId}:`);
+        transactionsToSave.forEach((formattedTransaction: any, index: number) => {
+          console.log(`Formatted Transaction ${index + 1}:`, {
+            trans_id: formattedTransaction.trans_id,
+            account_id: formattedTransaction.account_id,
+            date: formattedTransaction.date,
+            amount: formattedTransaction.amount,
+            merchant_name: formattedTransaction.merchant_name,
+            category: formattedTransaction.category,
+            // Note: analysis fields not included in upsert to preserve existing values
           });
         });
 
-        // Filter transactions for this specific account
-        const accountTransactions = transactionsResponse.data.added.filter(
-          (transaction: any) => transaction.account_id === account.account_id
-        );
+        const { data: savedTransactions, error: transactionsError } = await supabase
+          .from('transactions')
+          .upsert(transactionsToSave, { 
+            onConflict: 'trans_id',
+            ignoreDuplicates: false // This will update existing records but preserve analysis fields
+          })
+          .select();
 
-        console.log(`📈 Found ${accountTransactions.length} transactions for account ${account.name} (${account.account_id})`);
-        console.log(`🔍 Filtered transactions for account ${account.name}:`);
-        accountTransactions.forEach((transaction: any, index: number) => {
-          console.log(`Filtered Transaction ${index + 1}:`, {
-            transaction_id: transaction.transaction_id,
-            account_id: transaction.account_id,
-            date: transaction.date,
-            amount: transaction.amount,
-            name: transaction.name,
-            merchant_name: transaction.merchant_name,
-            category: transaction.category,
-            personal_finance_category: transaction.personal_finance_category,
-          });
-        });
-
-        if (accountTransactions.length > 0) {
-          // Save transactions to database
-          const transactionsToSave = accountTransactions.map((transaction: any) => ({
-            trans_id: transaction.transaction_id,
-            account_id: transaction.account_id,
-            date: transaction.date,
-            amount: transaction.amount,
-            merchant_name: transaction.merchant_name || transaction.name,
-            category: transaction.personal_finance_category?.[0] || transaction.category?.[0] || 'Other',
-            is_deductible: false, // Will be updated by AI analysis
-            deductible_reason: null,
-            deduction_score: 0,
-          }));
-
-          console.log(`💾 Formatted transactions to save for account ${account.name}:`);
-          transactionsToSave.forEach((formattedTransaction: any, index: number) => {
-            console.log(`Formatted Transaction ${index + 1}:`, {
-              trans_id: formattedTransaction.trans_id,
-              account_id: formattedTransaction.account_id,
-              date: formattedTransaction.date,
-              amount: formattedTransaction.amount,
-              merchant_name: formattedTransaction.merchant_name,
-              category: formattedTransaction.category,
-              is_deductible: formattedTransaction.is_deductible,
-              deductible_reason: formattedTransaction.deductible_reason,
-              deduction_score: formattedTransaction.deduction_score,
-            });
-          });
-
-          const { data: savedTransactions, error: transactionsError } = await supabase
-            .from('transactions')
-            .upsert(transactionsToSave, { onConflict: 'trans_id' })
-            .select();
-
-          if (transactionsError) {
-            console.error(`❌ Failed to save transactions for account ${account.name}:`, transactionsError);
-          } else {
-            console.log(`✅ Successfully saved ${savedTransactions?.length || 0} transactions for account ${account.name}`);
-            console.log('Saved transaction IDs:', savedTransactions?.map((t: any) => t.trans_id) || []);
-            totalTransactionsSaved += savedTransactions?.length || 0;
-          }
-
-          // Update the cursor for this account
-          const newCursor = transactionsResponse.data.next_cursor;
-          if (newCursor) {
-            const { error: cursorError } = await supabase
-              .from('accounts')
-              .update({ last_cursor: newCursor })
-              .eq('account_id', account.account_id);
-
-            if (cursorError) {
-              console.error(`❌ Failed to update cursor for account ${account.name}:`, cursorError);
-            } else {
-              console.log(`✅ Updated cursor for account ${account.name}: ${newCursor}`);
-            }
-          }
+        if (transactionsError) {
+          console.error(`❌ Failed to save transactions for user ${userId}:`, transactionsError);
         } else {
-          console.log(`📭 No new transactions for account ${account.name}`);
+          console.log(`✅ Successfully saved ${savedTransactions?.length || 0} transactions for user ${userId}`);
+          console.log('Saved transaction IDs:', savedTransactions?.map((t: any) => t.trans_id) || []);
+          totalTransactionsSaved = savedTransactions?.length || 0;
         }
 
-        totalAccountsProcessed++;
-      } catch (error) {
-        console.error(`❌ Error syncing transactions for account ${account.name}:`, error);
+        // Update the cursor for this user
+        const newCursor = transactionsResponse.data.next_cursor;
+        if (newCursor) {
+          const { error: cursorError } = await supabase
+            .from('user_profiles')
+            .update({ last_cursor: newCursor })
+            .eq('user_id', userId);
+
+          if (cursorError) {
+            console.error(`❌ Failed to update cursor for user ${userId}:`, cursorError);
+          } else {
+            console.log(`✅ Updated cursor for user ${userId}: ${newCursor}`);
+          }
+        }
+      } else {
+        console.log(`📭 No new transactions for user ${userId}`);
       }
+    } catch (error) {
+      console.error(`❌ Error syncing transactions for user ${userId}:`, error);
     }
     
-    console.log(`🎉 Transaction sync completed! Processed ${totalAccountsProcessed} accounts, saved ${totalTransactionsSaved} transactions`);
+    console.log(`🎉 Transaction sync completed! Processed ${accounts?.length || 0} accounts, saved ${totalTransactionsSaved} transactions`);
 
     return NextResponse.json({
       success: true,
-      accounts_processed: totalAccountsProcessed,
+      accounts_processed: accounts?.length || 0,
       transactions_saved: totalTransactionsSaved,
     });
   } catch (error) {

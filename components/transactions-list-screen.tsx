@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, Search, Filter, Edit, Trash2, FileText, DollarSign, Calendar, Tag } from 'lucide-react';
+import { DeductionIndicator } from '@/components/deduction-indicator';
 
 interface Transaction {
   id: string;
@@ -14,6 +15,8 @@ interface Transaction {
   date: string;
   type: 'expense' | 'income';
   isDeductible: boolean;
+  deductibleReason?: string;
+  confidenceScore?: number;
   notes?: string;
 }
 
@@ -200,8 +203,8 @@ export const TransactionsListScreen: React.FC<TransactionsListScreenProps> = ({
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       {/* Header */}
       <div className="bg-white border-b border-blue-100 sticky top-0 z-50 shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center gap-4">
+        <div className="max-w-7xl mx-auto px-6 py-6">
+          <div className="flex items-center gap-6">
             <Button onClick={onBack} variant="outline" size="sm" className="gap-2">
               <ArrowLeft className="w-4 h-4" />
               Back
@@ -214,7 +217,7 @@ export const TransactionsListScreen: React.FC<TransactionsListScreenProps> = ({
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-6">
+      <div className="max-w-7xl mx-auto p-6 py-8">
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <Card className="p-6 bg-white border-0 shadow-lg">
@@ -255,8 +258,8 @@ export const TransactionsListScreen: React.FC<TransactionsListScreenProps> = ({
         </div>
 
         {/* Filters */}
-        <Card className="p-6 bg-white border-0 shadow-xl mb-8">
-          <div className="flex flex-wrap items-center gap-4">
+        <Card className="p-8 bg-white border-0 shadow-xl mb-8">
+          <div className="flex flex-wrap items-center gap-6">
             <div className="relative flex-1 min-w-64">
               <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
               <Input
@@ -301,8 +304,8 @@ export const TransactionsListScreen: React.FC<TransactionsListScreenProps> = ({
         </Card>
 
         {/* Transactions List */}
-        <Card className="p-6 bg-white border-0 shadow-xl">
-          <div className="space-y-4">
+        <Card className="p-8 bg-white border-0 shadow-xl">
+          <div className="space-y-6">
             {filteredAndSortedTransactions.length === 0 ? (
               <div className="text-center py-12">
                 <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
@@ -310,9 +313,9 @@ export const TransactionsListScreen: React.FC<TransactionsListScreenProps> = ({
               </div>
             ) : (
               filteredAndSortedTransactions.map((transaction) => (
-                <div key={transaction.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors group">
-                  <div className="flex items-center gap-4 flex-1">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                <div key={transaction.id} className="flex items-start justify-between p-6 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors group">
+                  <div className="flex items-start gap-6 flex-1">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
                       transaction.type === 'income' 
                         ? 'bg-green-100' 
                         : transaction.isDeductible 
@@ -327,36 +330,42 @@ export const TransactionsListScreen: React.FC<TransactionsListScreenProps> = ({
                             : 'text-gray-600'
                       }`} />
                     </div>
-                    <div className="flex-1">
+                    <div className="flex-1 space-y-3 min-w-0">
                       <div className="flex items-center gap-2">
-                        <p className="font-medium text-slate-900">{transaction.description}</p>
+                        <p className="font-medium text-slate-900 truncate">{transaction.description}</p>
                         {transaction.type === 'income' && (
-                          <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full">
+                          <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full flex-shrink-0">
                             Income
                           </span>
                         )}
-                        {transaction.isDeductible && transaction.type === 'expense' && (
-                          <span className="text-xs px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full">
-                            Deductible
-                          </span>
-                        )}
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-slate-600 mt-1">
+                      <div className="flex items-center gap-2 text-sm text-slate-600">
                         <span>{transaction.category}</span>
                         <span>•</span>
                         <span>{new Date(transaction.date).toLocaleDateString()}</span>
                       </div>
+                      {/* Show deduction indicator only for expenses */}
+                      {transaction.type === 'expense' && (
+                        <div className="mt-4">
+                          <DeductionIndicator
+                            isDeductible={transaction.isDeductible}
+                            confidenceScore={transaction.confidenceScore}
+                            deductibleReason={transaction.deductibleReason}
+                            compact={true}
+                          />
+                        </div>
+                      )}
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex-shrink-0">
                       <p className={`font-bold ${
                         transaction.type === 'income' ? 'text-green-600' : 'text-slate-900'
                       }`}>
-                        {transaction.type === 'income' ? '+' : '-'}${transaction.amount.toFixed(2)}
+                        ${Math.abs(transaction.amount).toFixed(2)}
                       </p>
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-2 ml-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-3 ml-6 opacity-0 group-hover:opacity-100 transition-opacity">
                     <Button 
                       onClick={() => onEditTransaction(transaction)}
                       variant="outline" 

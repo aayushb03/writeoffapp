@@ -42,9 +42,10 @@ import {
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import TaxSavingsChart from './tax-savings-chart';
-import { createLinkToken, exchangePublicToken, getAccountBalances, syncTransactions } from '@/lib/api';
+import { createLinkToken, exchangePublicToken, getAccountBalances, syncTransactions, analyzeTransactions } from '@/lib/api';
 import { getTransactions } from '@/lib/database/transactions';
 import { getUserProfile } from '@/lib/database/profiles';
+import { DeductionIndicator } from '@/components/deduction-indicator';
 
 interface DashboardScreenProps {
   user: {
@@ -57,6 +58,7 @@ interface DashboardScreenProps {
   onSignOut: () => void;
   onNavigate: (screen: string) => void;
   transactions?: Transaction[];
+  onRefreshTransactions?: () => Promise<void>;
 }
 
 interface Transaction {
@@ -75,18 +77,18 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   user, 
   onSignOut, 
   onNavigate, 
-  transactions: propTransactions 
+  transactions: propTransactions, 
+  onRefreshTransactions 
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [plaidLoading, setPlaidLoading] = useState(false);
   const [plaidError, setPlaidError] = useState<string | null>(null);
   const [bankConnected, setBankConnected] = useState(false);
-  const [testingAI, setTestingAI] = useState(false);
-  const [aiTestResult, setAiTestResult] = useState<any>(null);
   const [realTransactions, setRealTransactions] = useState<any[]>([]);
-  const [loadingTransactions, setLoadingTransactions] = useState(false);
   const [accountBalances, setAccountBalances] = useState<any[]>([]);
+  const [analyzingTransactions, setAnalyzingTransactions] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<any>(null);
 
   // Check if bank is connected on component mount
   useEffect(() => {
@@ -109,47 +111,17 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     checkBankConnection();
   }, [user.id]);
 
-  // Fetch real transactions from database and sync from Plaid
-  const fetchRealTransactions = async () => {
-    setLoadingTransactions(true);
-    try {
-      // First, sync transactions from Plaid
-      console.log('🔄 Syncing transactions from Plaid...');
-      const syncResult = await syncTransactions(user.id);
-      
-      if (syncResult.success) {
-        console.log(`✅ Synced ${syncResult.transactionsSaved} new transactions from Plaid`);
-      } else {
-        console.error('❌ Failed to sync transactions:', syncResult.error);
-      }
-
-      // Then fetch all transactions from database
-      console.log('📊 Fetching transactions from database...');
-      const { data: transactions, error } = await getTransactions(user.id);
-      
-      if (error) {
-        console.error('Failed to fetch transactions:', error);
-      } else {
-        console.log('📋 Raw transactions from database:', transactions);
-        console.log('📊 Transaction count:', transactions?.length || 0);
-        if (transactions && transactions.length > 0) {
-          console.log('📋 Sample transaction:', transactions[0]);
-        }
-        setRealTransactions(transactions || []);
-      }
-    } catch (error) {
-      console.error('Error fetching transactions:', error);
-    } finally {
-      setLoadingTransactions(false);
-    }
-  };
-
-  // Fetch transactions on component mount
+  // Use transactions passed from protected page
   useEffect(() => {
-    if (bankConnected) {
-      fetchRealTransactions();
+    if (propTransactions) {
+      console.log('📋 Using transactions from protected page:', {
+        count: propTransactions.length,
+        sample: propTransactions[0],
+        types: propTransactions.map(t => ({ id: t.id, type: t.type, amount: t.amount, isDeductible: t.isDeductible }))
+      });
+      setRealTransactions(propTransactions);
     }
-  }, [user.id, bankConnected]);
+  }, [propTransactions]);
   
   // Create link token when needed
   const createLinkTokenHandler = async () => {
@@ -205,7 +177,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       }
       
       // Fetch transactions after connection
-      await fetchRealTransactions();
+      await syncTransactions(user.id); // Re-sync transactions after connection
       
     } catch (err: unknown) {
       console.error('Error connecting bank:', err);
@@ -215,6 +187,35 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       setPlaidLoading(false);
     }
   }, [user.id]);
+
+  // Handle transaction analysis
+  const handleAnalyzeTransactions = async () => {
+    setAnalyzingTransactions(true);
+    setAnalysisResult(null);
+
+    try {
+      console.log('🤖 Starting transaction analysis...');
+      const result = await analyzeTransactions(user.id);
+
+      if (result.success) {
+        console.log(`✅ Analysis completed! Analyzed ${result.analyzed} out of ${result.total} transactions`);
+        setAnalysisResult(result);
+
+        // Refresh transactions to show updated analysis
+        if (onRefreshTransactions) {
+          await onRefreshTransactions();
+        }
+      } else {
+        console.error('❌ Analysis failed:', result.error);
+        setAnalysisResult({ error: result.error });
+      }
+    } catch (error) {
+      console.error('Error analyzing transactions:', error);
+      setAnalysisResult({ error: 'Failed to analyze transactions' });
+    } finally {
+      setAnalyzingTransactions(false);
+    }
+  };
 
   // Plaid Link configuration
   const config = {
@@ -255,55 +256,6 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     }
   };
 
-  // Test OpenAI analysis
-  const testAIAnalysis = async () => {
-    console.log('Testing OpenAI analysis...');
-    setTestingAI(true);
-    setAiTestResult(null);
-    
-    const testTransaction = {
-      merchant_name: 'Amazon Web Services',
-      amount: 87.50,
-      category: 'Services, Cloud Computing',
-      date: '2024-12-28'
-    };
-
-    try {
-      const response = await fetch('/api/openai/analyze-transaction', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ transaction: testTransaction }),
-      });
-
-      const data = await response.json();
-      
-      if (data.success) {
-        setAiTestResult({
-          success: true,
-          transaction: testTransaction,
-          analysis: data.analysis
-        });
-        console.log('✅ AI Analysis successful:', data.analysis);
-      } else {
-        setAiTestResult({
-          success: false,
-          error: data.error
-        });
-        console.error('❌ AI Analysis failed:', data.error);
-      }
-    } catch (error) {
-      console.error('Error testing AI analysis:', error);
-      setAiTestResult({
-        success: false,
-        error: 'Network error or server unavailable'
-      });
-    } finally {
-      setTestingAI(false);
-    }
-  };
-
   // Effect to open Plaid Link when token is ready
   useEffect(() => {
     if (linkToken && ready && !plaidLoading) {
@@ -319,7 +271,8 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     console.log('calculateStats called with:', {
       realTransactionsCount: realTransactions.length,
       propTransactionsCount: propTransactions?.length || 0,
-      allTransactionsCount: allTransactions.length
+      allTransactionsCount: allTransactions.length,
+      sampleTransaction: allTransactions[0]
     });
     
     if (!allTransactions || allTransactions.length === 0) {
@@ -333,23 +286,21 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       };
     }
 
-    // Calculate based on real transaction data from Plaid
-    const deductibleTransactions = allTransactions.filter(t => t.is_deductible === true);
-    const totalDeductible = deductibleTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+    // Separate income and expense transactions based on the 'type' field
+    const expenseTransactions = allTransactions.filter(t => t.type === 'expense');
+    const incomeTransactions = allTransactions.filter(t => t.type === 'income');
     
-    // All transactions are expenses in our system (Plaid amounts are positive for debits)
-    const totalExpenses = allTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+    // Calculate deductible expenses (only from expense transactions)
+    const deductibleTransactions = expenseTransactions.filter(t => t.isDeductible === true);
+    const totalDeductible = deductibleTransactions.reduce((sum, t) => sum + Math.abs(t.amount || 0), 0);
     
-    // For revenue, we'd need to categorize or identify income transactions
-    // For now, we'll separate based on categories or merchant names that indicate income
-    const incomeCategories = ['deposit', 'transfer', 'payroll', 'income'];
-    const incomeTransactions = allTransactions.filter(t => {
-      const category = (t.category || '').toLowerCase();
-      const merchant = (t.merchant_name || '').toLowerCase();
-      return incomeCategories.some(cat => category.includes(cat) || merchant.includes(cat));
-    });
+    // Calculate total expenses (sum of all expense amounts)
+    const totalExpenses = expenseTransactions.reduce((sum, t) => sum + Math.abs(t.amount || 0), 0);
     
-    const totalRevenue = incomeTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+    // Calculate total revenue (sum of all income amounts)
+    const totalRevenue = incomeTransactions.reduce((sum, t) => sum + Math.abs(t.amount || 0), 0);
+    
+    // Calculate net profit/loss (revenue - expenses)
     const netProfitLoss = totalRevenue - totalExpenses;
     
     // Calculate tax savings (30% of deductible expenses)
@@ -363,7 +314,17 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       taxSavings: estimatedTaxSavings
     };
     
-    console.log('Calculated stats:', stats);
+    console.log('Calculated stats:', {
+      expenseTransactionsCount: expenseTransactions.length,
+      incomeTransactionsCount: incomeTransactions.length,
+      deductibleTransactionsCount: deductibleTransactions.length,
+      totalDeductible,
+      totalExpenses,
+      totalRevenue,
+      netProfitLoss,
+      estimatedTaxSavings,
+      stats
+    });
     return stats;
   };
 
@@ -438,7 +399,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
           </div>
         </div>
 
-        <div className="w-full px-6">
+        <div className="w-full px-6 py-8">
           {/* Bank Connection Required */}
           <div className="text-center py-8">
             <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -514,14 +475,77 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
               </Button>
               
               <Button 
-                onClick={() => onNavigate('receipt-upload')}
+                onClick={handleAnalyzeTransactions}
+                disabled={analyzingTransactions}
                 variant="outline"
                 className="h-10 border-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50 rounded-xl"
               >
-                <FileText className="w-4 h-4 mr-2" />
-                Upload Receipt
+                {analyzingTransactions ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Analyze Transactions
+                  </>
+                )}
               </Button>
             </div>
+
+            {/* Analysis Results Display */}
+            {analysisResult && (
+              <Card className={`p-6 shadow-lg ${
+                analysisResult.error 
+                  ? 'bg-red-50 border-red-200' 
+                  : 'bg-green-50 border-green-200'
+              }`}>
+                <div className="flex items-start gap-3">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    analysisResult.error 
+                      ? 'bg-red-100' 
+                      : 'bg-green-100'
+                  }`}>
+                    {analysisResult.error ? (
+                      <AlertCircle className="w-5 h-5 text-red-600" />
+                    ) : (
+                      <Sparkles className="w-5 h-5 text-green-600" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className={`font-semibold ${
+                        analysisResult.error 
+                          ? 'text-red-800' 
+                          : 'text-green-800'
+                      }`}>
+                        {analysisResult.error ? 'Analysis Failed' : 'Analysis Completed'}
+                      </h3>
+                      <Button 
+                        onClick={() => setAnalysisResult(null)}
+                        variant="ghost"
+                        size="sm"
+                        className="text-slate-400 hover:text-slate-600"
+                      >
+                        ×
+                      </Button>
+                    </div>
+                    
+                    <p className={`text-sm ${
+                      analysisResult.error 
+                        ? 'text-red-600' 
+                        : 'text-green-600'
+                    }`}>
+                      {analysisResult.error 
+                        ? analysisResult.error 
+                        : `Analyzed ${analysisResult.analyzed} out of ${analysisResult.total} transactions`
+                      }
+                    </p>
+                  </div>
+                </div>
+              </Card>
+            )}
           </div>
 
           {/* Plaid Error Display */}
@@ -591,29 +615,6 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                 Settings
               </Button>
               <Button 
-                onClick={testAIAnalysis}
-                disabled={testingAI}
-                variant="outline" 
-                size="sm" 
-                className="gap-2 text-purple-600 border-purple-200 hover:bg-purple-50"
-              >
-                {testingAI ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Sparkles className="w-4 h-4" />
-                )}
-                {testingAI ? 'Testing...' : 'Test AI'}
-              </Button>
-              <Button 
-                onClick={() => onNavigate('debug')}
-                variant="outline" 
-                size="sm" 
-                className="gap-2 text-blue-600 border-blue-200 hover:bg-blue-50"
-              >
-                <FileText className="w-4 h-4" />
-                Debug
-              </Button>
-              <Button 
                 onClick={onSignOut}
                 variant="outline" 
                 size="sm" 
@@ -627,7 +628,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         </div>
       </div>
 
-      <div className="w-full px-6">
+      <div className="w-full px-6 py-8">
         {/* Quick Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <Card 
@@ -714,7 +715,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         </div>
 
         {/* Main Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">          
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 px-6 py-8">
           {/* Left Column - Quick Actions & Recent Activity */}
           <div className="lg:col-span-2 space-y-6">
             {/* Tax Savings Chart */}
@@ -765,14 +766,23 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                 </Button>
 
                 <Button 
-                  onClick={() => onNavigate('receipt-upload')}
+                  onClick={handleAnalyzeTransactions}
+                  disabled={analyzingTransactions}
                   variant="outline"
-                  className="h-16 border-2 border-purple-200 hover:border-purple-300 hover:bg-purple-50 rounded-xl justify-start gap-4 px-6"
+                  className="h-16 border-2 border-purple-200 hover:border-purple-300 hover:bg-purple-50 rounded-xl justify-start gap-4 px-6 disabled:opacity-50"
                 >
-                  <FileText className="w-6 h-6 text-purple-600" />
+                  {analyzingTransactions ? (
+                    <Loader2 className="w-6 h-6 text-purple-600 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-6 h-6 text-purple-600" />
+                  )}
                   <div className="text-left">
-                    <p className="font-semibold text-slate-900">Upload Receipt</p>
-                    <p className="text-xs text-slate-600">Scan & categorize</p>
+                    <p className="font-semibold text-slate-900">
+                      {analyzingTransactions ? 'Analyzing...' : 'Analyze Transactions'}
+                    </p>
+                    <p className="text-xs text-slate-600">
+                      {analyzingTransactions ? 'AI processing' : 'AI tax analysis'}
+                    </p>
                   </div>
                 </Button>
 
@@ -791,23 +801,38 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
             </Card>
 
             {/* AI Test Results Display */}
-            {aiTestResult && (
-              <Card className={`p-6 shadow-lg ${aiTestResult.success ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+            {/* Removed aiTestResult state and display */}
+
+            {/* Analysis Results Display */}
+            {analysisResult && (
+              <Card className={`p-6 shadow-lg ${
+                analysisResult.error 
+                  ? 'bg-red-50 border-red-200' 
+                  : 'bg-green-50 border-green-200'
+              }`}>
                 <div className="flex items-start gap-3">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${aiTestResult.success ? 'bg-emerald-100' : 'bg-red-100'}`}>
-                    {aiTestResult.success ? (
-                      <Sparkles className="w-5 h-5 text-emerald-600" />
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    analysisResult.error 
+                      ? 'bg-red-100' 
+                      : 'bg-green-100'
+                  }`}>
+                    {analysisResult.error ? (
+                      <AlertCircle className="w-5 h-5 text-red-600" />
                     ) : (
-                      <span className="text-red-600 text-sm">!</span>
+                      <Sparkles className="w-5 h-5 text-green-600" />
                     )}
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center justify-between mb-2">
-                      <h3 className={`font-semibold ${aiTestResult.success ? 'text-emerald-800' : 'text-red-800'}`}>
-                        🤖 OpenAI Analysis {aiTestResult.success ? 'Results' : 'Error'}
+                      <h3 className={`font-semibold ${
+                        analysisResult.error 
+                          ? 'text-red-800' 
+                          : 'text-green-800'
+                      }`}>
+                        {analysisResult.error ? 'Analysis Failed' : 'Analysis Completed'}
                       </h3>
                       <Button 
-                        onClick={() => setAiTestResult(null)}
+                        onClick={() => setAnalysisResult(null)}
                         variant="ghost"
                         size="sm"
                         className="text-slate-400 hover:text-slate-600"
@@ -816,48 +841,16 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                       </Button>
                     </div>
                     
-                    {aiTestResult.success ? (
-                      <div className="space-y-3">
-                        <div className="p-3 bg-white rounded-lg border">
-                          <p className="text-sm font-medium text-slate-900">Test Transaction:</p>
-                          <p className="text-sm text-slate-600">
-                            {aiTestResult.transaction.merchant_name} - ${aiTestResult.transaction.amount}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            {aiTestResult.transaction.category} • {aiTestResult.transaction.date}
-                          </p>
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="p-3 bg-white rounded-lg border">
-                            <p className="text-xs text-slate-500 uppercase tracking-wide">Tax Deductible</p>
-                            <p className={`font-bold ${aiTestResult.analysis.is_deductible ? 'text-emerald-600' : 'text-red-600'}`}>
-                              {aiTestResult.analysis.is_deductible ? 'YES' : 'NO'}
-                            </p>
-                          </div>
-                          
-                          <div className="p-3 bg-white rounded-lg border">
-                            <p className="text-xs text-slate-500 uppercase tracking-wide">AI Confidence</p>
-                            <p className="font-bold text-blue-600">
-                              {aiTestResult.analysis.confidence_percentage}%
-                            </p>
-                          </div>
-                        </div>
-                        
-                        <div className="p-3 bg-white rounded-lg border">
-                          <p className="text-xs text-slate-500 uppercase tracking-wide">Reasoning</p>
-                          <p className="text-sm text-slate-700 italic">
-                            "{aiTestResult.analysis.deductible_reason}"
-                          </p>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="p-3 bg-white rounded-lg border border-red-200">
-                        <p className="text-sm text-red-800">
-                          {aiTestResult.error}
-                        </p>
-                      </div>
-                    )}
+                    <p className={`text-sm ${
+                      analysisResult.error 
+                        ? 'text-red-600' 
+                        : 'text-green-600'
+                    }`}>
+                      {analysisResult.error 
+                        ? analysisResult.error 
+                        : `Analyzed ${analysisResult.analyzed} out of ${analysisResult.total} transactions`
+                      }
+                    </p>
                   </div>
                 </div>
               </Card>
@@ -911,12 +904,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
               </div>
 
               <div className="space-y-4">
-                {loadingTransactions ? (
-                  <div className="text-center py-8">
-                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-blue-600" />
-                    <p className="text-sm text-slate-600">Loading transactions...</p>
-                  </div>
-                ) : displayTransactions.length === 0 ? (
+                {displayTransactions.length === 0 ? (
                   <div className="text-center py-8">
                     <FileText className="w-12 h-12 mx-auto mb-3 text-slate-300" />
                     <p className="text-sm text-slate-600 mb-2">No transactions found</p>
@@ -953,38 +941,32 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                           <span className={`font-medium ${
                             transaction.type === 'income' 
                               ? 'text-emerald-600' 
-                              : transaction.is_deductible 
-                                ? 'text-blue-600' 
-                                : 'text-slate-600'
+                              : 'text-slate-600'
                           }`}>
-                            {transaction.type === 'income' ? 'Revenue' : transaction.is_deductible ? 'Tax Deductible' : 'Expense'}
+                            {transaction.type === 'income' ? 'Revenue' : 'Expense'}
                           </span>
-                          {transaction.deduction_score && (
-                            <>
-                              <span>•</span>
-                              <div className="flex items-center gap-1">
-                                <span className="text-purple-600 font-medium">
-                                  🤖 {Math.round((transaction.deduction_score || 0) * 100)}% AI
-                                </span>
-                              </div>
-                            </>
-                          )}
                         </div>
-                        {transaction.deductibleReason && transaction.type === 'expense' && (
-                          <p className="text-xs text-slate-500 mt-1 italic">
-                            "{transaction.deductibleReason}"
-                          </p>
+                        {/* Show deduction indicator only for expenses */}
+                        {transaction.type === 'expense' && (
+                          <div className="mt-2">
+                            <DeductionIndicator
+                              isDeductible={transaction.isDeductible}
+                              confidenceScore={transaction.confidenceScore}
+                              deductibleReason={transaction.deductibleReason}
+                              compact={true}
+                            />
+                          </div>
                         )}
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <p className={`font-bold ${
-                        transaction.type === 'income' 
-                          ? 'text-emerald-600' 
-                          : 'text-slate-900'
-                      }`}>
-                        {transaction.type === 'income' ? '+' : '-'}${(transaction.amount || 0).toLocaleString()}
-                      </p>
+                      <div className="text-right">
+                        <p className={`font-bold ${
+                          transaction.type === 'income' 
+                            ? 'text-emerald-600' 
+                            : 'text-slate-900'
+                        }`}>
+                          ${Math.abs(transaction.amount || 0).toLocaleString()}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 )))}
@@ -1004,7 +986,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
           </div>
 
           {/* Right Column - Profile & Notifications */}
-          <div className="space-y-6">
+          <div className="space-y-6 px-6">
             {/* Profile Info */}
             <Card className="p-6 bg-white border-0 shadow-xl">
               <div className="text-center mb-6">

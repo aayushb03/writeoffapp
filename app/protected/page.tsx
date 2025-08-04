@@ -16,6 +16,7 @@ import { BanksDetailScreen } from "@/components/banks-detail-screen";
 import { ProfitLossDetailScreen } from "@/components/profit-loss-detail-screen";
 import { getUserProfile } from "@/lib/database/profiles";
 import { testDatabaseConnection } from "@/lib/database/test";
+import { syncTransactions } from "@/lib/api";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -37,6 +38,8 @@ interface Transaction {
   date: string;
   type: 'expense' | 'income';
   isDeductible: boolean;
+  deductibleReason?: string;
+  confidenceScore?: number;
   notes?: string;
 }
 
@@ -47,8 +50,73 @@ export default function ProtectedPage() {
   const [currentScreen, setCurrentScreen] = useState<'dashboard' | 'settings' | 'debug' | 'add-expense' | 'receipt-upload' | 'tax-calendar' | 'transactions' | 'edit-expense' | 'deductions-detail' | 'expenses-detail' | 'banks-detail' | 'profit-loss-detail'>('dashboard');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [loadingTransactions, setLoadingTransactions] = useState(false);
+  const [bankConnected, setBankConnected] = useState(false);
   const router = useRouter();
   const supabase = createClient();
+
+  // Fetch transactions from database and sync from Plaid
+  const fetchTransactions = async () => {
+    if (!user?.id) return;
+    
+    setLoadingTransactions(true);
+    try {
+      // First, sync transactions from Plaid if bank is connected
+      if (bankConnected) {
+        console.log('🔄 Syncing transactions from Plaid...');
+        const syncResult = await syncTransactions(user.id);
+        
+        if (syncResult.success) {
+          console.log(`✅ Synced ${syncResult.transactionsSaved} new transactions from Plaid`);
+        } else {
+          console.error('❌ Failed to sync transactions:', syncResult.error);
+        }
+      }
+
+      // Then fetch all transactions from database via server-side API
+      console.log('📊 Fetching transactions from database via API...');
+      const response = await fetch(`/api/transactions?userId=${user.id}`);
+      const result = await response.json();
+      
+      if (!response.ok) {
+        console.error('Failed to fetch transactions:', result.error);
+      } else {
+        console.log('📋 Raw transactions from API:', result.transactions);
+        console.log('📊 Transaction count:', result.count);
+        if (result.transactions && result.transactions.length > 0) {
+          console.log('📋 Sample transaction:', result.transactions[0]);
+        }
+        setTransactions(result.transactions || []);
+      }
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+    } finally {
+      setLoadingTransactions(false);
+    }
+  };
+
+  // Check bank connection and fetch transactions
+  const checkBankConnectionAndFetchTransactions = async (currentUser: any) => {
+    try {
+      // Check if user has a Plaid token in their profile
+      const { data: profile, error } = await getUserProfile(currentUser.id);
+      
+      if (profile?.plaid_token) {
+        setBankConnected(true);
+        // Fetch transactions if bank is connected
+        await fetchTransactions();
+      } else {
+        setBankConnected(false);
+        // Still fetch any existing transactions
+        await fetchTransactions();
+      }
+    } catch (error) {
+      console.error('Error checking bank connection:', error);
+      setBankConnected(false);
+      // Still fetch any existing transactions
+      await fetchTransactions();
+    }
+  };
 
   useEffect(() => {
     const checkUserAndProfile = async () => {
@@ -87,6 +155,10 @@ export default function ProtectedPage() {
           }
         } else {
           setHasProfile(!!profile);
+          // If user has profile, check bank connection and fetch transactions
+          if (profile) {
+            await checkBankConnectionAndFetchTransactions(currentUser);
+          }
         }
       } catch (error) {
         console.error('Error in checkUserAndProfile:', error);
@@ -99,10 +171,20 @@ export default function ProtectedPage() {
     checkUserAndProfile();
   }, [router, supabase]);
 
+  // Refresh transactions when navigating to dashboard
+  useEffect(() => {
+    if (currentScreen === 'dashboard' && user?.id && hasProfile === true) {
+      fetchTransactions();
+    }
+  }, [currentScreen, user?.id, hasProfile]);
+
   const handleProfileComplete = (profile: UserProfile) => {
     console.log('Profile setup completed:', profile);
     setHasProfile(true);
-    // Optionally redirect to dashboard or next step
+    // Check bank connection and fetch transactions after profile completion
+    if (user) {
+      checkBankConnectionAndFetchTransactions(user);
+    }
   };
 
   const handleBack = async () => {
@@ -331,6 +413,7 @@ export default function ProtectedPage() {
         onSignOut={handleSignOut}
         onNavigate={handleNavigate}
         transactions={transactions}
+        onRefreshTransactions={fetchTransactions}
       />
     );
   }
