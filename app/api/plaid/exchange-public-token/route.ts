@@ -136,18 +136,62 @@ export async function POST(request: NextRequest) {
     console.log(`📈 Found ${allTransactions.length} total transactions for user ${userId}`);
 
     if (allTransactions.length > 0) {
-      // Save transactions to database
-      const transactionsToSave = allTransactions.map((transaction: any) => ({
-        trans_id: transaction.transaction_id,
-        account_id: transaction.account_id,
-        date: transaction.date,
-        amount: transaction.amount,
-        merchant_name: transaction.merchant_name || transaction.name,
-        category: transaction.personal_finance_category?.detailed || transaction.category?.[0] || 'Other',
-        is_deductible: false, // Will be updated by AI analysis
-        deductible_reason: null,
-        deduction_score: 0,
-      }));
+      // Save transactions to database - preserve existing categories and analysis
+      const transactionsToSave: any[] = allTransactions.map((transaction: any) => {
+        // Debug the category data from Plaid
+        console.log(`🔍 Raw Plaid transaction category data for ${transaction.merchant_name}:`, {
+          personal_finance_category: transaction.personal_finance_category,
+          category: transaction.category,
+          personal_finance_category_detailed: transaction.personal_finance_category?.detailed,
+          category_0: transaction.category?.[0],
+        });
+
+        const category = transaction.personal_finance_category?.detailed || transaction.category?.[0] || 'Other';
+        
+        console.log(`📝 Final category for ${transaction.merchant_name}: ${category}`);
+        
+        return {
+          trans_id: transaction.transaction_id,
+          account_id: transaction.account_id,
+          date: transaction.date,
+          amount: transaction.amount,
+          merchant_name: transaction.merchant_name || transaction.name,
+          category: category,
+          is_deductible: false, // Will be updated by AI analysis
+          deductible_reason: null,
+          deduction_score: 0,
+        };
+      });
+
+      // For existing transactions, preserve their current category and analysis
+      const existingTransactions = await supabase
+        .from('transactions')
+        .select('trans_id, category, is_deductible, deductible_reason, deduction_score')
+        .in('trans_id', transactionsToSave.map(t => t.trans_id));
+
+      if (existingTransactions.data) {
+        const existingMap = new Map(existingTransactions.data.map(t => [t.trans_id, t]));
+        
+        // Merge with existing data to preserve categories and analysis
+        transactionsToSave.forEach(transaction => {
+          const existing = existingMap.get(transaction.trans_id);
+          if (existing) {
+            // Preserve existing category and analysis if they exist
+            if (existing.category && existing.category !== 'Other') {
+              transaction.category = existing.category;
+            }
+            if (existing.is_deductible !== null) {
+              transaction.is_deductible = existing.is_deductible;
+            }
+            if (existing.deductible_reason) {
+              transaction.deductible_reason = existing.deductible_reason;
+            }
+            if (existing.deduction_score !== null) {
+              transaction.deduction_score = existing.deduction_score;
+            }
+          }
+        });
+      }
 
 
       const { data: savedTransactions, error: transactionsError } = await supabase

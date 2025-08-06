@@ -106,17 +106,61 @@ export async function POST(request: NextRequest) {
       console.log(`📈 Found ${allTransactions.length} total transactions for user ${userId}`);
 
       if (allTransactions.length > 0) {
-        // Save transactions to database
-        const transactionsToSave = allTransactions.map((transaction: any) => ({
-          trans_id: transaction.transaction_id,
-          account_id: transaction.account_id,
-          date: transaction.date,
-          amount: transaction.amount,
-          merchant_name: transaction.merchant_name || transaction.name,
-          category: transaction.personal_finance_category?.[0] || transaction.category?.[0] || 'Other',
-          // Don't set analysis fields here - they should only be set by AI analysis
-          // is_deductible, deductible_reason, deduction_score will be preserved if they exist
-        }));
+        // Save transactions to database - preserve existing categories and analysis
+        const transactionsToSave: any[] = allTransactions.map((transaction: any) => {
+          // Debug the category data from Plaid
+          console.log(`🔍 Raw Plaid transaction category data for ${transaction.merchant_name}:`, {
+            personal_finance_category: transaction.personal_finance_category,
+            category: transaction.category,
+            personal_finance_category_detailed: transaction.personal_finance_category?.detailed,
+            category_0: transaction.category?.[0],
+          });
+
+          const category = transaction.personal_finance_category?.detailed || transaction.category?.[0] || 'Other';
+          
+          console.log(`📝 Final category for ${transaction.merchant_name}: ${category}`);
+          
+          return {
+            trans_id: transaction.transaction_id,
+            account_id: transaction.account_id,
+            date: transaction.date,
+            amount: transaction.amount,
+            merchant_name: transaction.merchant_name || transaction.name,
+            category: category,
+            // Don't set analysis fields here - they should only be set by AI analysis
+            // is_deductible, deductible_reason, deduction_score will be preserved if they exist
+          };
+        });
+
+        // For existing transactions, preserve their current category and analysis
+        const existingTransactions = await supabase
+          .from('transactions')
+          .select('trans_id, category, is_deductible, deductible_reason, deduction_score')
+          .in('trans_id', transactionsToSave.map(t => t.trans_id));
+
+        if (existingTransactions.data) {
+          const existingMap = new Map(existingTransactions.data.map(t => [t.trans_id, t]));
+          
+          // Merge with existing data to preserve categories and analysis
+          transactionsToSave.forEach(transaction => {
+            const existing = existingMap.get(transaction.trans_id);
+            if (existing) {
+              // Preserve existing category and analysis if they exist
+              if (existing.category && existing.category !== 'Other') {
+                transaction.category = existing.category;
+              }
+              if (existing.is_deductible !== null) {
+                transaction.is_deductible = existing.is_deductible;
+              }
+              if (existing.deductible_reason) {
+                transaction.deductible_reason = existing.deductible_reason;
+              }
+              if (existing.deduction_score !== null) {
+                transaction.deduction_score = existing.deduction_score;
+              }
+            }
+          });
+        }
 
         console.log(`💾 Formatted transactions to save for user ${userId}:`);
         transactionsToSave.forEach((formattedTransaction: any, index: number) => {
@@ -138,6 +182,19 @@ export async function POST(request: NextRequest) {
             ignoreDuplicates: false // This will update existing records but preserve analysis fields
           })
           .select();
+
+        // Debug: Check what was actually saved
+        if (savedTransactions) {
+          console.log(`🔍 Debug: Checking saved transactions for categories:`);
+          savedTransactions.forEach((savedTransaction: any, index: number) => {
+            console.log(`Saved Transaction ${index + 1}:`, {
+              trans_id: savedTransaction.trans_id,
+              merchant_name: savedTransaction.merchant_name,
+              category: savedTransaction.category,
+              amount: savedTransaction.amount,
+            });
+          });
+        }
 
         if (transactionsError) {
           console.error(`❌ Failed to save transactions for user ${userId}:`, transactionsError);

@@ -7,12 +7,15 @@ import { ArrowLeft, CreditCard, DollarSign, FileText, TrendingUp, PieChart } fro
 
 interface Transaction {
   id: string;
-  description: string;
+  merchant_name: string;
   amount: number;
   category: string;
   date: string;
-  type: 'expense' | 'income';
-  isDeductible: boolean;
+  type?: 'expense' | 'income';
+  is_deductible: boolean;
+  deductible_reason?: string;
+  deduction_score?: number;
+  description?: string;
   notes?: string;
 }
 
@@ -81,14 +84,14 @@ export const ExpensesDetailScreen: React.FC<ExpensesDetailScreenProps> = ({
 
   // Apply view type filter
   const displayTransactions = filteredTransactions.filter(transaction => {
-    if (viewType === 'deductible') return transaction.isDeductible;
-    if (viewType === 'personal') return !transaction.isDeductible;
+    if (viewType === 'deductible') return transaction.is_deductible;
+    if (viewType === 'personal') return !transaction.is_deductible;
     return true;
   });
 
   const totalExpenses = displayTransactions.reduce((sum, t) => sum + t.amount, 0);
-  const deductibleExpenses = displayTransactions.filter(t => t.isDeductible).reduce((sum, t) => sum + t.amount, 0);
-  const personalExpenses = displayTransactions.filter(t => !t.isDeductible).reduce((sum, t) => sum + t.amount, 0);
+  const deductibleExpenses = displayTransactions.filter(t => t.is_deductible).reduce((sum, t) => sum + t.amount, 0);
+  const personalExpenses = displayTransactions.filter(t => !t.is_deductible).reduce((sum, t) => sum + t.amount, 0);
 
   // Category breakdown
   const categoryBreakdown = displayTransactions.reduce((acc, transaction) => {
@@ -97,7 +100,7 @@ export const ExpensesDetailScreen: React.FC<ExpensesDetailScreenProps> = ({
     }
     acc[transaction.category].total += transaction.amount;
     acc[transaction.category].count += 1;
-    if (transaction.isDeductible) {
+    if (transaction.is_deductible) {
       acc[transaction.category].deductible += transaction.amount;
     } else {
       acc[transaction.category].personal += transaction.amount;
@@ -229,10 +232,10 @@ export const ExpensesDetailScreen: React.FC<ExpensesDetailScreenProps> = ({
                       <div key={transaction.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
                         <div className="flex items-center gap-3">
                           <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                            transaction.isDeductible ? 'bg-emerald-100' : 'bg-gray-100'
+                            transaction.is_deductible ? 'bg-emerald-100' : 'bg-gray-100'
                           }`}>
                             <CreditCard className={`w-4 h-4 ${
-                              transaction.isDeductible ? 'text-emerald-600' : 'text-gray-600'
+                              transaction.is_deductible ? 'text-emerald-600' : 'text-gray-600'
                             }`} />
                           </div>
                           <div>
@@ -242,8 +245,8 @@ export const ExpensesDetailScreen: React.FC<ExpensesDetailScreenProps> = ({
                               <span>•</span>
                               <span>{new Date(transaction.date).toLocaleDateString()}</span>
                               <span>•</span>
-                              <span className={transaction.isDeductible ? 'text-emerald-600' : 'text-gray-600'}>
-                                {transaction.isDeductible ? 'Business' : 'Personal'}
+                              <span className={transaction.is_deductible ? 'text-emerald-600' : 'text-gray-600'}>
+                                {transaction.is_deductible ? 'Business' : 'Personal'}
                               </span>
                             </div>
                           </div>

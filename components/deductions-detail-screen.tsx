@@ -7,12 +7,15 @@ import { ArrowLeft, DollarSign, FileText, TrendingUp, Calendar } from 'lucide-re
 
 interface Transaction {
   id: string;
-  description: string;
+  merchant_name: string;
   amount: number;
   category: string;
   date: string;
-  type: 'expense' | 'income';
-  isDeductible: boolean;
+  type?: 'expense' | 'income';
+  is_deductible: boolean;
+  deductible_reason?: string;
+  deduction_score?: number;
+  description?: string;
   notes?: string;
 }
 
@@ -39,7 +42,7 @@ export const DeductionsDetailScreen: React.FC<DeductionsDetailScreenProps> = ({
   const periods = ['This Month', 'Last Month', 'This Quarter', 'This Year', 'All Time'];
 
   // Filter deductible expenses
-  const deductibleTransactions = transactions.filter(t => t.type === 'expense' && t.isDeductible);
+  const deductibleTransactions = transactions.filter(t => t.type === 'expense' && t.is_deductible);
   
   // Get unique categories
   const categories = ['All Categories', ...Array.from(new Set(deductibleTransactions.map(t => t.category)))];

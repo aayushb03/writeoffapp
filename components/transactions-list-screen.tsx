@@ -1,23 +1,63 @@
 "use client";
 
-import React, { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { ArrowLeft, Search, Filter, Edit, Trash2, FileText, DollarSign, Calendar, Tag } from 'lucide-react';
-import { DeductionIndicator } from '@/components/deduction-indicator';
+import React, { useState, useEffect } from 'react';
+
+const writeOffLogo = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iOCIgZmlsbD0iIzNiODJmNiIvPgo8cGF0aCBkPSJNOC41IDEwSDIzLjVMMjEuNSAyMkg2LjVMOC41IDEwWiIgZmlsbD0id2hpdGUiLz4KPHBhdGggZD0iTTEwIDEySDIyTDIwLjUgMjBIOC41TDEwIDEyWiIgZmlsbD0iIzNiODJmNiIvPgo8L3N2Zz4K';
+
+// Icon components
+const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+  </svg>
+);
+
+const SearchIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+  </svg>
+);
+
+const FilterIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.414A1 1 0 013 6.707V4z" />
+  </svg>
+);
+
+const CheckCircleIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+
+const ClockIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+
+const LightBulbIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+  </svg>
+);
+
+const FileTextIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+  </svg>
+);
 
 interface Transaction {
   id: string;
-  description: string;
+  merchant_name: string;
   amount: number;
-  category: string;
   date: string;
-  type: 'expense' | 'income';
-  isDeductible: boolean;
-  deductibleReason?: string;
-  confidenceScore?: number;
-  notes?: string;
+  category: string;
+  is_deductible: boolean;
+  deduction_score?: number;
+  deductible_reason?: string;
+  description?: string;
+  type?: 'expense' | 'income';
 }
 
 interface TransactionsListScreenProps {
@@ -33,6 +73,14 @@ interface TransactionsListScreenProps {
   transactions?: Transaction[];
 }
 
+const formatCategory = (category: string): string => {
+  if (!category) return 'Uncategorized';
+  return category
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+};
+
 export const TransactionsListScreen: React.FC<TransactionsListScreenProps> = ({ 
   user, 
   onBack, 
@@ -40,368 +88,281 @@ export const TransactionsListScreen: React.FC<TransactionsListScreenProps> = ({
   transactions: propTransactions 
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [selectedPeriod, setSelectedPeriod] = useState('All Time');
-  const [sortBy, setSortBy] = useState('date-desc');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [showFilters, setShowFilters] = useState(false);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Default transactions if none provided
-  const defaultTransactions: Transaction[] = [
-    {
-      id: '1',
-      description: 'Office Supplies - Staples',
-      amount: 149.99,
-      category: 'Office Supplies',
-      date: '2024-12-28',
-      type: 'expense',
-      isDeductible: true,
-    },
-    {
-      id: '2',
-      description: 'Adobe Creative Suite',
-      amount: 52.99,
-      category: 'Software & Subscriptions',
-      date: '2024-12-27',
-      type: 'expense',
-      isDeductible: true,
-    },
-    {
-      id: '3',
-      description: 'Client Meeting Lunch',
-      amount: 85.50,
-      category: 'Meals & Entertainment',
-      date: '2024-12-26',
-      type: 'expense',
-      isDeductible: true,
-    },
-    {
-      id: '4',
-      description: 'Uber to Client Office',
-      amount: 24.75,
-      category: 'Travel & Transportation',
-      date: '2024-12-25',
-      type: 'expense',
-      isDeductible: true,
-    },
-    {
-      id: '5',
-      description: 'MacBook Pro 16"',
-      amount: 2399.99,
-      category: 'Equipment & Hardware',
-      date: '2024-12-20',
-      type: 'expense',
-      isDeductible: true,
-    },
-    {
-      id: '6',
-      description: 'Website Domain Renewal',
-      amount: 12.99,
-      category: 'Professional Services',
-      date: '2024-12-18',
-      type: 'expense',
-      isDeductible: true,
-    },
-    {
-      id: '7',
-      description: 'Client Payment - Web Design',
-      amount: 1500.00,
-      category: 'Professional Services',
-      date: '2024-12-15',
-      type: 'income',
-      isDeductible: false,
-    }
-  ];
-
-  const transactions = propTransactions || defaultTransactions;
-  
-  const categories = Array.from(new Set(transactions.map(t => t.category)));
-  
-  const periods = ['All Time', 'This Month', 'Last Month', 'This Quarter', 'This Year'];
-  
-  const sortOptions = [
-    { value: 'date-desc', label: 'Newest First' },
-    { value: 'date-asc', label: 'Oldest First' },
-    { value: 'amount-desc', label: 'Highest Amount' },
-    { value: 'amount-asc', label: 'Lowest Amount' },
-    { value: 'description', label: 'Description A-Z' }
-  ];
-
-  const filteredAndSortedTransactions = transactions
-    .filter(transaction => {
-      // Search filter
-      if (searchTerm && !transaction.description.toLowerCase().includes(searchTerm.toLowerCase())) {
-        return false;
-      }
-      
-      // Category filter
-      if (selectedCategory !== 'All' && transaction.category !== selectedCategory) {
-        return false;
-      }
-      
-      // Period filter
-      if (selectedPeriod !== 'All Time') {
-        const transactionDate = new Date(transaction.date);
-        const now = new Date();
-        
-        switch (selectedPeriod) {
-          case 'This Month':
-            if (transactionDate.getMonth() !== now.getMonth() || 
-                transactionDate.getFullYear() !== now.getFullYear()) {
-              return false;
-            }
-            break;
-          case 'Last Month':
-            const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1);
-            if (transactionDate.getMonth() !== lastMonth.getMonth() || 
-                transactionDate.getFullYear() !== lastMonth.getFullYear()) {
-              return false;
-            }
-            break;
-          case 'This Quarter':
-            const quarter = Math.floor(now.getMonth() / 3);
-            const transactionQuarter = Math.floor(transactionDate.getMonth() / 3);
-            if (transactionQuarter !== quarter || 
-                transactionDate.getFullYear() !== now.getFullYear()) {
-              return false;
-            }
-            break;
-          case 'This Year':
-            if (transactionDate.getFullYear() !== now.getFullYear()) {
-              return false;
-            }
-            break;
+  // Fetch transactions from API
+  useEffect(() => {
+    const fetchTransactions = async () => {
+      try {
+        const response = await fetch(`/api/transactions?userId=${user.id}`);
+        if (response.ok) {
+          const data = await response.json();
+          console.log('🔍 Fetched transactions:', data.transactions);
+          setTransactions(data.transactions || []);
+        } else {
+          console.error('Failed to fetch transactions');
         }
+      } catch (error) {
+        console.error('Error fetching transactions:', error);
+      } finally {
+        setLoading(false);
       }
-      
-      return true;
-    })
-    .sort((a, b) => {
-      switch (sortBy) {
-        case 'date-desc':
-          return new Date(b.date).getTime() - new Date(a.date).getTime();
-        case 'date-asc':
-          return new Date(a.date).getTime() - new Date(b.date).getTime();
-        case 'amount-desc':
-          return b.amount - a.amount;
-        case 'amount-asc':
-          return a.amount - b.amount;
-        case 'description':
-          return a.description.localeCompare(b.description);
-        default:
-          return 0;
-      }
-    });
+    };
 
-  const totalAmount = filteredAndSortedTransactions
-    .filter(t => t.type === 'expense')
+    if (!propTransactions) {
+      fetchTransactions();
+    } else {
+      setTransactions(propTransactions);
+      setLoading(false);
+    }
+  }, [propTransactions]);
+
+  // Calculate totals
+  const totalTransactions = transactions.length;
+  const totalExpenses = transactions
+    .filter(t => t.amount > 0)
     .reduce((sum, t) => sum + t.amount, 0);
+  const taxDeductible = transactions
+    .filter(t => t.amount > 0 && t.is_deductible === true)
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  // Filter transactions
+  const filteredTransactions = transactions.filter(transaction => {
+    const matchesSearch = !searchTerm || 
+      transaction.merchant_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (transaction.category && transaction.category.toLowerCase().includes(searchTerm.toLowerCase()));
     
-  const deductibleAmount = filteredAndSortedTransactions
-    .filter(t => t.type === 'expense' && t.isDeductible)
-    .reduce((sum, t) => sum + t.amount, 0);
+    const matchesStatus = statusFilter === 'all' || 
+      (statusFilter === 'deductible' && transaction.is_deductible === true) ||
+      (statusFilter === 'not-deductible' && transaction.is_deductible === false) ||
+      (statusFilter === 'needs-review' && transaction.is_deductible === null);
+    
+    return matchesSearch && matchesStatus;
+  });
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      {/* Header */}
-      <div className="bg-white border-b border-blue-100 sticky top-0 z-50 shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <div className="flex items-center gap-6">
-            <Button onClick={onBack} variant="outline" size="sm" className="gap-2">
-              <ArrowLeft className="w-4 h-4" />
-              Back
-            </Button>
-            <div>
-              <h1 className="text-xl font-semibold text-slate-900">All Transactions</h1>
-              <p className="text-sm text-slate-600">Manage your business expenses and income</p>
-            </div>
-          </div>
+  const getStatusConfig = (transaction: Transaction) => {
+    if (transaction.is_deductible === true) {
+      return { 
+        icon: <CheckCircleIcon />,
+        bg: 'bg-emerald-50', 
+        border: 'border-emerald-200',
+        text: 'text-emerald-700',
+        iconBg: 'bg-emerald-100',
+        status: 'Deductible'
+      };
+    } else if (transaction.is_deductible === false) {
+      return { 
+        icon: <span className="w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center text-red-600 font-medium">✕</span>,
+        bg: 'bg-red-50', 
+        border: 'border-red-200',
+        text: 'text-red-700',
+        iconBg: 'bg-red-100',
+        status: 'Not Deductible'
+      };
+    } else {
+      return { 
+        icon: <ClockIcon />,
+        bg: 'bg-amber-50', 
+        border: 'border-amber-200',
+        text: 'text-amber-700',
+        iconBg: 'bg-amber-100',
+        status: 'Needs Review'
+      };
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-neutral-50 to-blue-50/30 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-slate-600">Loading transactions...</p>
         </div>
       </div>
+    );
+  }
 
-      <div className="max-w-7xl mx-auto p-6 py-8">
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Card className="p-6 bg-white border-0 shadow-lg">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                <FileText className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm text-slate-600">Total Transactions</p>
-                <p className="text-2xl font-bold text-slate-900">{filteredAndSortedTransactions.length}</p>
-              </div>
-            </div>
-          </Card>
-
-          <Card className="p-6 bg-white border-0 shadow-lg">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
-                <DollarSign className="w-6 h-6 text-red-600" />
-              </div>
-              <div>
-                <p className="text-sm text-slate-600">Total Expenses</p>
-                <p className="text-2xl font-bold text-slate-900">${totalAmount.toLocaleString()}</p>
-              </div>
-            </div>
-          </Card>
-
-          <Card className="p-6 bg-white border-0 shadow-lg">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                <Tag className="w-6 h-6 text-green-600" />
-              </div>
-              <div>
-                <p className="text-sm text-slate-600">Tax Deductible</p>
-                <p className="text-2xl font-bold text-slate-900">${deductibleAmount.toLocaleString()}</p>
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        {/* Filters */}
-        <Card className="p-8 bg-white border-0 shadow-xl mb-8">
-          <div className="flex flex-wrap items-center gap-6">
-            <div className="relative flex-1 min-w-64">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
-              <Input
-                placeholder="Search transactions..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-md text-sm min-w-40"
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800">
+      {/* Compact Sticky Header */}
+      <div className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
+        <div className="px-4 lg:px-8 py-3 lg:py-4">
+          <div className="flex items-center gap-3 lg:gap-4">
+            {/* Back Button - Desktop Only */}
+            <button 
+              onClick={onBack} 
+              className="hidden lg:flex w-8 h-8 lg:w-10 lg:h-10 rounded-lg items-center justify-center text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-colors"
             >
-              <option value="All">All Categories</option>
-              {categories.map(category => (
-                <option key={category} value={category}>{category}</option>
-              ))}
-            </select>
+              <ArrowLeftIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+            </button>
             
-            <select
-              value={selectedPeriod}
-              onChange={(e) => setSelectedPeriod(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-md text-sm min-w-40"
+            {/* Logo and Title */}
+            <div className="flex items-center gap-2 lg:gap-3 min-w-0">
+              <img src={writeOffLogo} alt="WriteOff" className="h-5 lg:h-6 flex-shrink-0" />
+              <div className="min-w-0">
+                <h1 className="text-base lg:text-lg font-bold text-slate-800 truncate">All Transactions</h1>
+              </div>
+            </div>
+
+            {/* Search Bar */}
+            <div className="flex-1 max-w-md ml-2 lg:ml-4">
+              <div className="relative">
+                <SearchIcon className="absolute left-2 lg:left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4 sm:w-5 sm:h-5" />
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full h-8 lg:h-10 pl-8 lg:pl-10 pr-3 lg:pr-4 rounded-lg border border-slate-200 bg-white text-sm outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600/20 transition-colors"
+                />
+              </div>
+            </div>
+
+            {/* Filter Toggle - Mobile */}
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className="lg:hidden w-8 h-8 rounded-lg flex items-center justify-center text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-colors"
             >
-              {periods.map(period => (
-                <option key={period} value={period}>{period}</option>
-              ))}
-            </select>
-            
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-md text-sm min-w-40"
-            >
-              {sortOptions.map(option => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
+              <FilterIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+            </button>
+
+            {/* Filter Dropdown - Desktop */}
+            <div className="hidden lg:block">
+              <div className="relative">
+                <FilterIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4 sm:w-5 sm:h-5" />
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="h-10 pl-10 pr-8 rounded-lg border border-slate-200 bg-white text-sm outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600/20 transition-colors appearance-none"
+                >
+                  <option value="all">All Status</option>
+                  <option value="deductible">Deductible</option>
+                  <option value="needs-review">Needs Review</option>
+                  <option value="not-deductible">Not Deductible</option>
+                </select>
+              </div>
+            </div>
           </div>
-        </Card>
 
-        {/* Transactions List */}
-        <Card className="p-8 bg-white border-0 shadow-xl">
-          <div className="space-y-6">
-            {filteredAndSortedTransactions.length === 0 ? (
-              <div className="text-center py-12">
-                <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <p className="text-slate-500">No transactions found matching your criteria</p>
-              </div>
-            ) : (
-              filteredAndSortedTransactions.map((transaction) => (
-                <div key={transaction.id} className="flex items-start justify-between p-6 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors group">
-                  <div className="flex items-start gap-6 flex-1">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                      transaction.type === 'income' 
-                        ? 'bg-green-100' 
-                        : transaction.isDeductible 
-                          ? 'bg-blue-100' 
-                          : 'bg-gray-100'
-                    }`}>
-                      <FileText className={`w-5 h-5 ${
-                        transaction.type === 'income' 
-                          ? 'text-green-600' 
-                          : transaction.isDeductible 
-                            ? 'text-blue-600' 
-                            : 'text-gray-600'
-                      }`} />
-                    </div>
-                    <div className="flex-1 space-y-3 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium text-slate-900 truncate">{transaction.description}</p>
-                        {transaction.type === 'income' && (
-                          <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full flex-shrink-0">
-                            Income
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-slate-600">
-                        <span>{transaction.category}</span>
-                        <span>•</span>
-                        <span>{new Date(transaction.date).toLocaleDateString()}</span>
-                      </div>
-                      {/* Show deduction indicator only for expenses */}
-                      {transaction.type === 'expense' && (
-                        <div className="mt-4">
-                          <DeductionIndicator
-                            isDeductible={transaction.isDeductible}
-                            confidenceScore={transaction.confidenceScore}
-                            deductibleReason={transaction.deductibleReason}
-                            compact={true}
-                          />
-                        </div>
-                      )}
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className={`font-bold ${
-                        transaction.type === 'income' ? 'text-green-600' : 'text-slate-900'
-                      }`}>
-                        ${Math.abs(transaction.amount).toFixed(2)}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-3 ml-6 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button 
-                      onClick={() => onEditTransaction(transaction)}
-                      variant="outline" 
-                      size="sm" 
-                      className="gap-2"
-                    >
-                      <Edit className="w-4 h-4" />
-                      Edit
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="gap-2 text-red-600 border-red-200 hover:bg-red-50"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Delete
-                    </Button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-          
-          {filteredAndSortedTransactions.length > 0 && (
-            <div className="mt-6 pt-6 border-t border-gray-200">
-              <div className="flex justify-between items-center">
-                <p className="text-sm text-slate-600">
-                  Showing {filteredAndSortedTransactions.length} of {transactions.length} transactions
-                </p>
-                <Button variant="outline" size="sm">
-                  Export to CSV
-                </Button>
+          {/* Collapsible Mobile Filter */}
+          {showFilters && (
+            <div className="mt-3 pt-3 border-t border-slate-200 lg:hidden">
+              <div className="relative">
+                <FilterIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4 sm:w-5 sm:h-5" />
+                <select
+                  value={statusFilter}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value);
+                    setShowFilters(false);
+                  }}
+                  className="w-full h-10 pl-10 pr-8 rounded-lg border border-slate-200 bg-white text-sm outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600/20 transition-colors appearance-none"
+                >
+                  <option value="all">All Status</option>
+                  <option value="deductible">Deductible</option>
+                  <option value="needs-review">Needs Review</option>
+                  <option value="not-deductible">Not Deductible</option>
+                </select>
               </div>
             </div>
           )}
-        </Card>
+        </div>
+      </div>
+
+      {/* Scrollable Content */}
+      <div className="max-w-6xl mx-auto px-4 lg:px-8 py-4 lg:py-6">
+        {/* Summary Cards - Now in scrollable content */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 lg:gap-4 mb-6 lg:mb-8">
+          <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg p-3 lg:p-4 text-center">
+            <div className="text-lg lg:text-xl font-semibold text-white">{totalTransactions}</div>
+            <div className="text-xs lg:text-sm font-bold text-white/80">Total Transactions</div>
+          </div>
+          <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg p-3 lg:p-4 text-center">
+            <div className="text-lg lg:text-xl font-semibold text-white">${totalExpenses.toFixed(0)}</div>
+            <div className="text-xs lg:text-sm font-bold text-white/80">Total Expenses</div>
+          </div>
+          <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg p-3 lg:p-4 text-center">
+            <div className="text-lg lg:text-xl font-semibold text-white">${taxDeductible.toFixed(0)}</div>
+            <div className="text-xs lg:text-sm font-bold text-white/80">Tax Deductible</div>
+          </div>
+        </div>
+
+        {/* Transaction List - Improved density */}
+        <div className="space-y-3 lg:space-y-4">
+          {filteredTransactions.map((transaction) => {
+            const statusConfig = getStatusConfig(transaction);
+
+            return (
+              <div key={transaction.id} className="bg-white rounded-xl border border-white/20 shadow-sm hover:shadow-md transition-all duration-200">
+                <div className="p-4 lg:p-6 cursor-pointer" onClick={() => onEditTransaction(transaction)}>
+                  <div className="flex items-center justify-between gap-3 lg:gap-4">
+                    <div className="flex items-center gap-3 lg:gap-4 flex-1 min-w-0">
+                      {/* Status Icon */}
+                      <div className={`w-8 h-8 lg:w-10 lg:h-10 rounded-full flex items-center justify-center flex-shrink-0 ${statusConfig.iconBg} ${statusConfig.text}`}>
+                        {statusConfig.icon}
+                      </div>
+                      
+                      {/* Transaction Details */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 lg:gap-3 mb-1 lg:mb-2">
+                          <h3 className="font-medium text-slate-800 text-sm lg:text-base truncate">
+                            {transaction.merchant_name || transaction.description || 'Unknown Merchant'}
+                          </h3>
+                          
+                          {transaction.deduction_score && (
+                            <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200 flex-shrink-0">
+                              <LightBulbIcon className="w-4 h-4" />
+                              <span>{Math.round(transaction.deduction_score * 100)}%</span>
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-xs lg:text-sm text-slate-600">
+                          <span className="font-medium text-blue-600 truncate">
+                            {formatCategory(transaction.category)}
+                          </span>
+                          <span className="hidden sm:inline">•</span>
+                          <span className="flex-shrink-0">{new Date(transaction.date).toLocaleDateString()}</span>
+                        </div>
+                        
+                        {transaction.deductible_reason && (
+                          <p className="text-xs lg:text-sm text-slate-600 mt-1 truncate lg:whitespace-normal">
+                            {transaction.deductible_reason}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Amount */}
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-sm lg:text-lg font-semibold text-slate-800">
+                        ${Math.abs(transaction.amount).toFixed(2)}
+                      </div>
+                      {transaction.is_deductible === true && (
+                        <div className="text-xs lg:text-sm text-emerald-600 font-medium">
+                          +${Math.abs(transaction.amount).toFixed(2)} saved
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          
+          {/* Empty State */}
+          {filteredTransactions.length === 0 && (
+            <div className="text-center py-12 lg:py-20">
+              <div className="w-12 h-12 lg:w-16 lg:h-16 bg-white/10 backdrop-blur-sm rounded-xl flex items-center justify-center mx-auto mb-4 lg:mb-6">
+                <FileTextIcon className="w-5 h-5 text-white" />
+              </div>
+              <h3 className="font-bold text-white mb-2 lg:mb-3">No transactions found</h3>
+              <p className="text-white/80 text-sm">Try adjusting your search or filter criteria.</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

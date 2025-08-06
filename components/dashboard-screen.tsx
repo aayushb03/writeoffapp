@@ -15,1045 +15,652 @@
  * - Fallback to manual review for low-confidence results
  */
 
-"use client";
+import React, { useState, useEffect } from 'react';
 
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { usePlaidLink } from 'react-plaid-link';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { 
-  CreditCard, 
-  Building2, 
-  TrendingUp, 
-  DollarSign, 
-  Calendar, 
-  FileText,
-  Settings,
-  LogOut,
-  PlusCircle,
-  ArrowRight,
-  Bell,
-  Search,
-  Filter,
-  Loader2,
-  CheckCircle,
-  Sparkles,
-  AlertCircle
-} from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import TaxSavingsChart from './tax-savings-chart';
-import { createLinkToken, exchangePublicToken, getAccountBalances, syncTransactions, analyzeTransactions } from '@/lib/api';
-import { getTransactions } from '@/lib/database/transactions';
-import { getUserProfile } from '@/lib/database/profiles';
-import { DeductionIndicator } from '@/components/deduction-indicator';
+const writeOffLogo = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iOCIgZmlsbD0iIzNiODJmNiIvPgo8cGF0aCBkPSJNOC41IDEwSDIzLjVMMjEuNSAyMkg2LjVMOC41IDEwWiIgZmlsbD0id2hpdGUiLz4KPHBhdGggZD0iTTEwIDEySDIyTDIwLjUgMjBIOC41TDEwIDEyWiIgZmlsbD0iIzNiODJmNiIvPgo8L3N2Zz4K';
+
+// Icon components
+const DollarSignIcon = () => (
+  <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+  </svg>
+);
+
+const TrendingUpIcon = () => (
+  <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+  </svg>
+);
+
+const ClockIcon = () => (
+  <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+
+const CheckCircleIcon = () => (
+  <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+
+const SettingsIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+  </svg>
+);
+
+const BarChartIcon = () => (
+  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+  </svg>
+);
+
+const FileTextIcon = () => (
+  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+  </svg>
+);
+
+const LogOutIcon = () => (
+  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+  </svg>
+);
+
+const SparklesIcon = () => (
+  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+  </svg>
+);
 
 interface DashboardScreenProps {
-  user: {
-    id: string;
-    email?: string;
-    user_metadata?: {
-      name?: string;
-    };
-  };
-  onSignOut: () => void;
+  profile: any;
+  transactions: any[];
   onNavigate: (screen: string) => void;
-  transactions?: Transaction[];
-  onRefreshTransactions?: () => Promise<void>;
+  onTransactionClick: (transaction: any) => void;
+  onAnalyzeTransactions?: () => void;
+  analyzingTransactions?: boolean;
+  onSignOut?: () => void;
 }
 
-interface Transaction {
-  id: string;
-  description: string;
-  amount: number;
-  category: string;
-  date: string;
-  type: 'expense' | 'income';
-  isDeductible: boolean;
-  deductibleReason?: string;
-  confidenceScore?: number; // AI confidence score (0-1)
-}
+// Helper function to format category names
+const formatCategory = (category: string): string => {
+  if (!category) return 'Needs review';
+  return category
+    .toLowerCase()
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
 
-export const DashboardScreen: React.FC<DashboardScreenProps> = ({ 
-  user, 
-  onSignOut, 
+export default function DashboardScreen({ 
+  profile, 
+  transactions, 
   onNavigate, 
-  transactions: propTransactions, 
-  onRefreshTransactions 
-}) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [linkToken, setLinkToken] = useState<string | null>(null);
-  const [plaidLoading, setPlaidLoading] = useState(false);
-  const [plaidError, setPlaidError] = useState<string | null>(null);
-  const [bankConnected, setBankConnected] = useState(false);
-  const [realTransactions, setRealTransactions] = useState<any[]>([]);
-  const [accountBalances, setAccountBalances] = useState<any[]>([]);
-  const [analyzingTransactions, setAnalyzingTransactions] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<any>(null);
+  onTransactionClick,
+  onAnalyzeTransactions,
+  analyzingTransactions = false,
+  onSignOut
+}: DashboardScreenProps) {
+  const [analysisResult, setAnalysisResult] = useState<{analyzed: number, total: number} | null>(null);
+  const [analysisProgress, setAnalysisProgress] = useState<{current: number, total: number} | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [taxSavingsData, setTaxSavingsData] = useState<any>(null);
+  const [loadingTaxSavings, setLoadingTaxSavings] = useState(true);
 
-  // Check if bank is connected on component mount
+  // Fetch tax savings data
   useEffect(() => {
-    const checkBankConnection = async () => {
+    const fetchTaxSavings = async () => {
+      if (!profile?.user_id) return;
+      
       try {
-        // Check if user has a Plaid token in their profile
-        const { data: profile, error } = await getUserProfile(user.id);
-        
-        if (profile?.plaid_token) {
-          setBankConnected(true);
+        setLoadingTaxSavings(true);
+        const response = await fetch(`/api/tax-savings?userId=${profile.user_id}`);
+        if (response.ok) {
+          const data = await response.json();
+          setTaxSavingsData(data.data);
         } else {
-          setBankConnected(false);
+          console.error('Failed to fetch tax savings data');
         }
       } catch (error) {
-        console.error('Error checking bank connection:', error);
-        setBankConnected(false);
+        console.error('Error fetching tax savings:', error);
+      } finally {
+        setLoadingTaxSavings(false);
       }
     };
 
-    checkBankConnection();
-  }, [user.id]);
-
-  // Use transactions passed from protected page
-  useEffect(() => {
-    if (propTransactions) {
-      console.log('📋 Using transactions from protected page:', {
-        count: propTransactions.length,
-        sample: propTransactions[0],
-        types: propTransactions.map(t => ({ id: t.id, type: t.type, amount: t.amount, isDeductible: t.isDeductible }))
-      });
-      setRealTransactions(propTransactions);
-    }
-  }, [propTransactions]);
-  
-  // Create link token when needed
-  const createLinkTokenHandler = async () => {
-    console.log('Creating link token for user:', user.id);
-    
-    try {
-      setPlaidLoading(true);
-      setPlaidError(null);
-      
-      const { success, linkToken: token, error } = await createLinkToken(user.id);
-      
-      if (success && token) {
-        console.log('Link token created successfully');
-        setLinkToken(token);
-      } else {
-        console.error('Link token error:', error);
-        throw new Error(typeof error === 'string' ? error : 'Failed to create link token');
-      }
-    } catch (err: unknown) {
-      console.error('Error creating link token:', err);
-      setPlaidError('Failed to initialize bank connection. Please try again.');
-    } finally {
-      setPlaidLoading(false);
-    }
-  };
-
-  // Handle successful Plaid Link
-  const onPlaidSuccess = useCallback(async (public_token: string) => {
-    setPlaidLoading(true);
-    setPlaidError(null);
-    
-    try {
-      console.log('🔗 Exchanging public token for access token...');
-      const { success, error } = await exchangePublicToken(public_token, user.id);
-
-      if (!success) {
-        console.error('API Error Response:', error);
-        throw new Error(typeof error === 'string' ? error : 'Failed to exchange token');
-      }
-
-      setBankConnected(true);
-      
-      // Clear the link token so it can be regenerated if needed
-      setLinkToken(null);
-      
-      // Show success message
-      console.log('Bank connected successfully');
-      
-      // Fetch updated account balances
-      const { success: balanceSuccess, accounts } = await getAccountBalances(user.id);
-      if (balanceSuccess && accounts) {
-        setAccountBalances(accounts);
-      }
-      
-      // Fetch transactions after connection
-      await syncTransactions(user.id); // Re-sync transactions after connection
-      
-    } catch (err: unknown) {
-      console.error('Error connecting bank:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to connect bank account. Please try again.';
-      setPlaidError(errorMessage);
-    } finally {
-      setPlaidLoading(false);
-    }
-  }, [user.id]);
-
-  // Handle transaction analysis
-  const handleAnalyzeTransactions = async () => {
-    setAnalyzingTransactions(true);
-    setAnalysisResult(null);
-
-    try {
-      console.log('🤖 Starting transaction analysis...');
-      const result = await analyzeTransactions(user.id);
-
-      if (result.success) {
-        console.log(`✅ Analysis completed! Analyzed ${result.analyzed} out of ${result.total} transactions`);
-        setAnalysisResult(result);
-
-        // Refresh transactions to show updated analysis
-        if (onRefreshTransactions) {
-          await onRefreshTransactions();
-        }
-      } else {
-        console.error('❌ Analysis failed:', result.error);
-        setAnalysisResult({ error: result.error });
-      }
-    } catch (error) {
-      console.error('Error analyzing transactions:', error);
-      setAnalysisResult({ error: 'Failed to analyze transactions' });
-    } finally {
-      setAnalyzingTransactions(false);
-    }
-  };
-
-  // Plaid Link configuration
-  const config = {
-    token: linkToken || null,
-    onSuccess: onPlaidSuccess,
-    onExit: () => {
-      setLinkToken(null);
-      setPlaidLoading(false);
-    },
-    onEvent: (eventName: string, metadata: unknown) => {
-      console.log('Plaid Link event:', eventName, metadata);
-    },
-  };
-
-  const { open, ready } = usePlaidLink(config);
-
-  // Handle connect bank button click
-  const handleConnectBank = async () => {
-    console.log('Connect bank button clicked!');
-    console.log('Current linkToken:', linkToken);
-    console.log('Plaid ready:', ready);
-    
-    try {
-      setPlaidError(null);
-      
-      if (!linkToken) {
-        console.log('No link token, creating one...');
-        await createLinkTokenHandler();
-      } else if (ready) {
-        console.log('Opening Plaid Link...');
-        open();
-      } else {
-        console.log('Plaid Link not ready yet');
-      }
-    } catch (error) {
-      console.error('Error handling connect bank:', error);
-      setPlaidError('Failed to initialize bank connection.');
-    }
-  };
-
-  // Effect to open Plaid Link when token is ready
-  useEffect(() => {
-    if (linkToken && ready && !plaidLoading) {
-      open();
-    }
-  }, [linkToken, ready, open, plaidLoading]);
-
-  // Calculate real stats from transactions
-  const calculateStats = () => {
-    // Use real transactions if available, otherwise fall back to prop transactions
-    const allTransactions = realTransactions.length ? realTransactions : (propTransactions || []);
-    
-    console.log('calculateStats called with:', {
-      realTransactionsCount: realTransactions.length,
-      propTransactionsCount: propTransactions?.length || 0,
-      allTransactionsCount: allTransactions.length,
-      sampleTransaction: allTransactions[0]
-    });
-    
-    if (!allTransactions || allTransactions.length === 0) {
-      console.log('No transactions found, returning zero stats');
-      return {
-        totalDeductions: 0,
-        trackedExpenses: 0,
-        totalRevenue: 0,
-        netProfitLoss: 0,
-        taxSavings: 0
-      };
-    }
-
-    // Separate income and expense transactions based on the 'type' field
-    const expenseTransactions = allTransactions.filter(t => t.type === 'expense');
-    const incomeTransactions = allTransactions.filter(t => t.type === 'income');
-    
-    // Calculate deductible expenses (only from expense transactions)
-    const deductibleTransactions = expenseTransactions.filter(t => t.isDeductible === true);
-    const totalDeductible = deductibleTransactions.reduce((sum, t) => sum + Math.abs(t.amount || 0), 0);
-    
-    // Calculate total expenses (sum of all expense amounts)
-    const totalExpenses = expenseTransactions.reduce((sum, t) => sum + Math.abs(t.amount || 0), 0);
-    
-    // Calculate total revenue (sum of all income amounts)
-    const totalRevenue = incomeTransactions.reduce((sum, t) => sum + Math.abs(t.amount || 0), 0);
-    
-    // Calculate net profit/loss (revenue - expenses)
-    const netProfitLoss = totalRevenue - totalExpenses;
-    
-    // Calculate tax savings (30% of deductible expenses)
-    const estimatedTaxSavings = totalDeductible * 0.3;
-
-    const stats = {
-      totalDeductions: totalDeductible,
-      trackedExpenses: totalExpenses,
-      totalRevenue: totalRevenue,
-      netProfitLoss: netProfitLoss,
-      taxSavings: estimatedTaxSavings
-    };
-    
-    console.log('Calculated stats:', {
-      expenseTransactionsCount: expenseTransactions.length,
-      incomeTransactionsCount: incomeTransactions.length,
-      deductibleTransactionsCount: deductibleTransactions.length,
-      totalDeductible,
-      totalExpenses,
-      totalRevenue,
-      netProfitLoss,
-      estimatedTaxSavings,
-      stats
-    });
-    return stats;
-  };
-
-  const displayStats = useMemo(() => calculateStats(), [realTransactions, propTransactions]);
-
-  // Use real transactions if available, otherwise fall back to prop transactions or empty array
-  const displayTransactions = realTransactions.length ? 
-    realTransactions.slice(0, 4).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : 
-    (propTransactions?.slice(0, 4).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) || []);
-
-  const [notifications] = useState([
-    {
-      id: '1',
-      message: '🤖 AI-powered deduction analysis is now active',
-      time: '1 hour ago',
-      type: 'success'
-    },
-    {
-      id: '2',
-      message: 'New deductible expense detected: $149.99',
-      time: '2 hours ago',
-      type: 'success'
-    },
-    {
-      id: '3',
-      message: 'Monthly tax summary is ready to view',
-      time: '1 day ago',
-      type: 'info'
-    }
-  ]);
-
-  // Show bank connection required screen if bank is not connected
-  if (!bankConnected) {
+    fetchTaxSavings();
+  }, [profile?.user_id]);
+  if (!transactions) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-        {/* Header */}
-        <div className="bg-white border-b border-blue-100 sticky top-0 z-50 shadow-sm">
-          <div className="w-full px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="h-10 w-32 bg-blue-600 rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">WriteOff</span>
-                </div>
-                <div>
-                  <h1 className="text-xl font-semibold text-slate-900">
-                    Welcome back, <span className="text-blue-600 font-bold">{user?.user_metadata?.name || user?.email}</span>
-                  </h1>
-                  <p className="text-sm text-slate-600">Connect your bank to get started</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <Button 
-                  onClick={() => onNavigate('settings')}
-                  variant="outline" 
-                  size="sm" 
-                  className="gap-2"
-                >
-                  <Settings className="w-4 h-4" />
-                  Settings
-                </Button>
-                <Button 
-                  onClick={onSignOut}
-                  variant="outline" 
-                  size="sm" 
-                  className="gap-2 text-red-600 border-red-200 hover:bg-red-50"
-                >
-                  <LogOut className="w-4 h-4" />
-                  Sign Out
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="w-full px-6 py-8">
-          {/* Bank Connection Required */}
-          <div className="text-center py-8">
-            <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Building2 className="w-10 h-10 text-blue-600" />
-            </div>
-            
-            <h2 className="text-2xl font-bold text-slate-900 mb-3">
-              Connect Your Bank Account
-            </h2>
-            
-            <p className="text-base text-slate-600 mb-6">
-              To start tracking your business expenses and maximizing tax deductions, 
-              you'll need to connect your bank account. This allows us to automatically 
-              import and analyze your transactions.
-            </p>
-
-            <div className="bg-white rounded-2xl shadow-xl p-6 mx-auto mb-6" style={{ maxWidth: '500px' }}>
-              <div className="space-y-3 mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center">
-                    <CheckCircle className="w-4 h-4 text-emerald-600" />
-                  </div>
-                  <span className="text-sm text-slate-700">Secure bank-level encryption</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center">
-                    <CheckCircle className="w-4 h-4 text-emerald-600" />
-                  </div>
-                  <span className="text-sm text-slate-700">Automatic transaction import</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center">
-                    <CheckCircle className="w-4 h-4 text-emerald-600" />
-                  </div>
-                  <span className="text-sm text-slate-700">AI-powered tax analysis</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center">
-                    <CheckCircle className="w-4 h-4 text-emerald-600" />
-                  </div>
-                  <span className="text-sm text-slate-700">Real-time deduction tracking</span>
-                </div>
-              </div>
-
-              <Button 
-                onClick={handleConnectBank}
-                disabled={plaidLoading}
-                className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-all duration-200 disabled:opacity-50"
-              >
-                {plaidLoading ? (
-                  <div className="flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Connecting...
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <Building2 className="w-4 h-4" />
-                    Connect Bank Account
-                  </div>
-                )}
-              </Button>
-            </div>
-
-            {/* Alternative Actions */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3" style={{ maxWidth: '600px', margin: '0 auto' }}>
-              <Button 
-                onClick={() => onNavigate('add-expense')}
-                variant="outline"
-                className="h-10 border-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50 rounded-xl"
-              >
-                <PlusCircle className="w-4 h-4 mr-2" />
-                Add Expense Manually
-              </Button>
-              
-              <Button 
-                onClick={handleAnalyzeTransactions}
-                disabled={analyzingTransactions}
-                variant="outline"
-                className="h-10 border-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50 rounded-xl"
-              >
-                {analyzingTransactions ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Analyzing...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4 mr-2" />
-                    Analyze Transactions
-                  </>
-                )}
-              </Button>
-            </div>
-
-            {/* Analysis Results Display */}
-            {analysisResult && (
-              <Card className={`p-6 shadow-lg ${
-                analysisResult.error 
-                  ? 'bg-red-50 border-red-200' 
-                  : 'bg-green-50 border-green-200'
-              }`}>
-                <div className="flex items-start gap-3">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                    analysisResult.error 
-                      ? 'bg-red-100' 
-                      : 'bg-green-100'
-                  }`}>
-                    {analysisResult.error ? (
-                      <AlertCircle className="w-5 h-5 text-red-600" />
-                    ) : (
-                      <Sparkles className="w-5 h-5 text-green-600" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className={`font-semibold ${
-                        analysisResult.error 
-                          ? 'text-red-800' 
-                          : 'text-green-800'
-                      }`}>
-                        {analysisResult.error ? 'Analysis Failed' : 'Analysis Completed'}
-                      </h3>
-                      <Button 
-                        onClick={() => setAnalysisResult(null)}
-                        variant="ghost"
-                        size="sm"
-                        className="text-slate-400 hover:text-slate-600"
-                      >
-                        ×
-                      </Button>
-                    </div>
-                    
-                    <p className={`text-sm ${
-                      analysisResult.error 
-                        ? 'text-red-600' 
-                        : 'text-green-600'
-                    }`}>
-                      {analysisResult.error 
-                        ? analysisResult.error 
-                        : `Analyzed ${analysisResult.analyzed} out of ${analysisResult.total} transactions`
-                      }
-                    </p>
-                  </div>
-                </div>
-              </Card>
-            )}
-          </div>
-
-          {/* Plaid Error Display */}
-          {plaidError && (
-            <div style={{ maxWidth: '500px', margin: '0 auto' }}>
-              <Card className="p-4 bg-red-50 border-red-200 shadow-lg">
-                <div className="flex items-center gap-3">
-                  <div className="w-6 h-6 bg-red-100 rounded-full flex items-center justify-center">
-                    <AlertCircle className="w-4 h-4 text-red-600" />
-                  </div>
-                  <div>
-                    <p className="text-red-800 font-medium text-sm">Connection Error</p>
-                    <p className="text-red-600 text-xs">{plaidError}</p>
-                  </div>
-                  <Button 
-                    onClick={() => setPlaidError(null)}
-                    variant="outline"
-                    size="sm"
-                    className="ml-auto text-red-600 border-red-300 hover:bg-red-100"
-                  >
-                    Dismiss
-                  </Button>
-                </div>
-              </Card>
-            </div>
-          )}
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-pulse">
+          <div className="w-8 h-8 bg-blue-200 rounded-full"></div>
         </div>
       </div>
     );
   }
 
+  // Use tax savings data from API if available, otherwise fall back to local calculations
+  const taxSavings = taxSavingsData?.taxSavings?.yearToDate || 0;
+  const projectedAnnualSavings = taxSavingsData?.taxSavings?.projectedAnnual || 0;
+  const currentMonthDeductions = taxSavingsData?.deductions?.currentMonth || 0;
+  const monthlyTargetPercentage = taxSavingsData?.deductions?.monthlyTargetPercentage || 0;
+
+  let totalDeductions = 0;
+  let uncategorizedCount = 0;
+
+  // Fallback calculations if API data not available
+  if (!taxSavingsData) {
+    const currentDate = new Date();
+    const currentMonth = currentDate.getMonth();
+    const currentYear = currentDate.getFullYear();
+
+    for (let i = 0; i < transactions.length; i++) {
+      const transaction = transactions[i];
+      if (transaction && transaction.is_deductible === true && transaction.amount) {
+        totalDeductions += transaction.amount;
+      }
+      
+      if (transaction && transaction.is_deductible === null) {
+        uncategorizedCount++;
+      }
+    }
+  } else {
+    totalDeductions = taxSavingsData.deductions.yearToDate;
+    uncategorizedCount = transactions.filter(t => t.is_deductible === null).length;
+  }
+
+  const categoryBreakdown: Record<string, number> = {};
+  for (let i = 0; i < transactions.length; i++) {
+    const transaction = transactions[i];
+    if (transaction && transaction.is_deductible === true && transaction.category && transaction.amount) {
+      if (categoryBreakdown[transaction.category]) {
+        categoryBreakdown[transaction.category] += transaction.amount;
+      } else {
+        categoryBreakdown[transaction.category] = transaction.amount;
+      }
+    }
+  }
+
+  const categoryEntries = [];
+  for (const category in categoryBreakdown) {
+    categoryEntries.push([category, categoryBreakdown[category]]);
+  }
+  
+  categoryEntries.sort((a, b) => (b[1] as number) - (a[1] as number));
+  const topCategories = categoryEntries.slice(0, 3);
+
+  // Debug logging
+  console.log('📊 Category breakdown:', {
+    totalTransactions: transactions.length,
+    deductibleTransactions: transactions.filter(t => t.is_deductible === true).length,
+    categoryBreakdown,
+    topCategories
+  });
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      {/* Header */}
-      <div className="bg-white border-b border-blue-100 sticky top-0 z-50 shadow-sm">
-        <div className="w-full px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="h-10 w-32 bg-blue-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">WriteOff</span>
-              </div>
-              <div>
-                <h1 className="text-xl font-semibold text-slate-900">
-                  Welcome back, <span className="text-blue-600 font-bold">{user?.user_metadata?.name || user?.email}</span>
-                </h1>
-                <p className="text-sm text-slate-600">Ready to track your expenses and maximize deductions</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <Button variant="outline" size="sm" className="gap-2">
-                  <Bell className="w-4 h-4" />
-                  {notifications.length > 0 && (
-                    <span className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                      {notifications.length}
-                    </span>
-                  )}
-                </Button>
-              </div>
-              <Button 
-                onClick={() => onNavigate('settings')}
-                variant="outline" 
-                size="sm" 
-                className="gap-2"
+    <div className="min-h-screen bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800">
+      {/* Header - Desktop Only */}
+      <div className="bg-white border-b border-slate-200 sticky top-0 z-40 hidden lg:block">
+        <div className="flex items-center justify-between px-4 lg:px-6 py-3 lg:py-4">
+          <div className="flex items-center gap-3 lg:gap-4">
+            <img src={writeOffLogo} alt="WriteOff" className="h-6 lg:h-8" />
+            <h1 className="text-lg lg:text-xl font-medium text-slate-800">WriteOff</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => onNavigate('settings')} 
+              className="w-8 h-8 lg:w-10 lg:h-10 rounded-lg flex items-center justify-center text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-colors"
+            >
+              <SettingsIcon />
+            </button>
+            {onSignOut && (
+              <button 
+                onClick={onSignOut} 
+                className="w-8 h-8 lg:w-10 lg:h-10 rounded-lg flex items-center justify-center text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
+                title="Sign Out"
               >
-                <Settings className="w-4 h-4" />
-                Settings
-              </Button>
-              <Button 
-                onClick={onSignOut}
-                variant="outline" 
-                size="sm" 
-                className="gap-2 text-red-600 border-red-200 hover:bg-red-50"
-              >
-                <LogOut className="w-4 h-4" />
-                Sign Out
-              </Button>
-            </div>
+                <LogOutIcon />
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="w-full px-6 py-8">
-        {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <Card 
-            className="p-6 bg-white border-0 shadow-lg hover:shadow-xl transition-shadow cursor-pointer"
-            onClick={() => onNavigate('deductions-detail')}
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
-                <DollarSign className="w-6 h-6 text-emerald-600" />
-              </div>
-              <div>
-                <p className="text-sm text-slate-600">Total Deductions</p>
-                <p className="text-2xl font-bold text-slate-900">${displayStats.totalDeductions.toLocaleString()}</p>
-              </div>
-            </div>
-          </Card>
-
-          <Card 
-            className="p-6 bg-white border-0 shadow-lg hover:shadow-xl transition-shadow cursor-pointer"
-            onClick={() => onNavigate('expenses-detail')}
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                <CreditCard className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm text-slate-600">Tracked Expenses</p>
-                <p className="text-2xl font-bold text-slate-900">${displayStats.trackedExpenses.toLocaleString()}</p>
-              </div>
-            </div>
-          </Card>
-
-          <Card 
-            className="p-6 bg-white border-0 shadow-lg hover:shadow-xl transition-shadow cursor-pointer"
-            onClick={() => onNavigate('profit-loss-detail')}
-          >
-            <div className="flex items-center gap-4">
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                displayStats.netProfitLoss >= 0 
-                  ? 'bg-emerald-100' 
-                  : 'bg-red-100'
-              }`}>
-                <TrendingUp className={`w-6 h-6 ${
-                  displayStats.netProfitLoss >= 0 
-                    ? 'text-emerald-600' 
-                    : 'text-red-600'
-                }`} />
-              </div>
-              <div>
-                <p className="text-sm text-slate-600">Net P/L</p>
-                <p className={`text-2xl font-bold ${
-                  displayStats.netProfitLoss >= 0 
-                    ? 'text-emerald-600' 
-                    : 'text-red-600'
-                }`}>
-                  {displayStats.netProfitLoss >= 0 ? '+' : ''}${displayStats.netProfitLoss.toLocaleString()}
-                </p>
-                <p className="text-xs text-slate-500 mt-1">
-                  {displayStats.netProfitLoss >= 0 ? 'Profit' : 'Loss'} this period
-                </p>
-                <div className="flex items-center gap-1 mt-1">
-                  <div className="text-xs text-slate-500">
-                    Revenue: ${displayStats.totalRevenue.toLocaleString()}
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 lg:px-6 py-3 lg:py-5">
+        {/* Welcome Section */}
+        <div className="mb-6 lg:mb-8 animate-[fadeIn_0.4s_ease-out_forwards]">
+          <div className="text-center mb-6 lg:mb-8">
+            <h2 className="text-2xl lg:text-3xl font-medium text-white mb-2 lg:mb-3 tracking-tight">
+              Welcome back, <span className="text-blue-200">{profile?.name?.split(' ')[0] || 'there'}</span>
+            </h2>
+            <p className="text-blue-100 text-base lg:text-lg">
+              Here's your tax optimization overview
+            </p>
+          </div>
+          
+          {/* KPI Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6 mb-6 lg:mb-10">
+            <button
+              onClick={() => onNavigate('transactions')}
+              className="group bg-white/95 hover:bg-white border border-white/20 hover:border-blue-200 rounded-xl p-4 lg:p-6 text-left transition-all duration-200 shadow-lg hover:shadow-xl animate-[slideInLeft_0.4s_ease-out_0.1s_both]"
+            >
+              <div className="flex items-center gap-3 lg:gap-4 mb-3 lg:mb-4">
+                <div className="w-10 h-10 lg:w-12 lg:h-12 bg-emerald-100 rounded-lg flex items-center justify-center text-emerald-600">
+                  <DollarSignIcon />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xl lg:text-2xl font-semibold text-slate-800 mb-1">
+                    ${taxSavings.toFixed(0)}
+                  </div>
+                  <div className="text-xs lg:text-sm font-bold text-slate-600 uppercase tracking-wide">
+                    Tax Savings
                   </div>
                 </div>
               </div>
-            </div>
-          </Card>
+              <div className="border-t border-slate-100 pt-3">
+                <p className="text-xs lg:text-sm text-slate-600 font-medium mb-1">
+                  Total saved this year
+                </p>
+                <p className="text-xs text-slate-500">
+                  Projected: <span className="font-semibold text-slate-800">${projectedAnnualSavings.toFixed(0)}</span> annually
+                </p>
+              </div>
+            </button>
 
-          <Card 
-            className="p-6 bg-white border-0 shadow-lg hover:shadow-xl transition-shadow cursor-pointer"
-            onClick={() => onNavigate('summary')}
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
-                <TrendingUp className="w-6 h-6 text-orange-600" />
+            <button
+              onClick={() => onNavigate('transactions')}
+              className="group bg-white/95 hover:bg-white border border-white/20 hover:border-blue-200 rounded-xl p-4 lg:p-6 text-left transition-all duration-200 shadow-lg hover:shadow-xl animate-[fadeIn_0.4s_ease-out_0.2s_both]"
+            >
+              <div className="flex items-center gap-3 lg:gap-4 mb-3 lg:mb-4">
+                <div className="w-10 h-10 lg:w-12 lg:h-12 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600">
+                  <TrendingUpIcon />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xl lg:text-2xl font-semibold text-slate-800 mb-1">
+                    ${currentMonthDeductions.toFixed(0)}
+                  </div>
+                  <div className="text-xs lg:text-sm font-bold text-slate-600 uppercase tracking-wide">
+                    New Deductions
+                  </div>
+                </div>
               </div>
-              <div>
-                <p className="text-sm text-slate-600">Tax Savings</p>
-                <p className="text-2xl font-bold text-slate-900">${displayStats.taxSavings.toLocaleString()}</p>
+              <div className="border-t border-slate-100 pt-3">
+                <p className="text-xs lg:text-sm text-slate-600 font-medium mb-1">
+                  This month so far
+                </p>
+                <p className="text-xs text-slate-500">
+                  {Math.min(monthlyTargetPercentage, 100).toFixed(0)}% of monthly target
+                </p>
               </div>
-            </div>
-          </Card>
+            </button>
+
+            <button
+              onClick={() => onNavigate(uncategorizedCount > 0 ? 'review-transactions' : 'transactions')}
+              className={`group bg-white/95 hover:bg-white border rounded-xl p-4 lg:p-6 text-left transition-all duration-200 shadow-lg hover:shadow-xl animate-[slideInRight_0.4s_ease-out_0.3s_both] sm:col-span-2 lg:col-span-1 ${
+                uncategorizedCount > 0
+                  ? 'border-amber-200 hover:border-amber-300'
+                  : 'border-emerald-200 hover:border-emerald-300'
+              }`}
+            >
+              <div className="flex items-center gap-3 lg:gap-4 mb-3 lg:mb-4">
+                <div className={`w-10 h-10 lg:w-12 lg:h-12 rounded-lg flex items-center justify-center ${
+                  uncategorizedCount > 0 
+                    ? 'bg-amber-100 text-amber-600'
+                    : 'bg-emerald-100 text-emerald-600'
+                }`}>
+                  {uncategorizedCount > 0 ? <ClockIcon /> : <CheckCircleIcon />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xl lg:text-2xl font-semibold text-slate-800 mb-1">
+                    {uncategorizedCount > 0 ? uncategorizedCount : '✓'}
+                  </div>
+                  <div className="text-xs lg:text-sm font-bold text-slate-600 uppercase tracking-wide">
+                    Next Step
+                  </div>
+                </div>
+              </div>
+              <div className="border-t border-slate-100 pt-3">
+                <p className="text-xs lg:text-sm text-slate-600 font-medium mb-1">
+                  {uncategorizedCount > 0 ? 'Review pending transactions' : 'All caught up!'}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {uncategorizedCount > 0 ? 'Categorize to maximize savings' : 'Everything is organized'}
+                </p>
+              </div>
+            </button>
+          </div>
         </div>
 
-        {/* Main Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 px-6 py-8">
-          {/* Left Column - Quick Actions & Recent Activity */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Tax Savings Chart */}
-            <TaxSavingsChart transactions={realTransactions.length ? realTransactions : propTransactions} />
-
-            {/* Quick Actions */}
-            <Card className="p-8 bg-white border-0 shadow-xl">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="text-xl font-semibold text-slate-900">Quick Actions</h3>
-                  <p className="text-slate-600">Get started with tracking your business expenses</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Button 
-                  onClick={() => onNavigate('add-expense')}
-                  className="h-16 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white rounded-xl shadow-lg justify-start gap-4 px-6"
-                >
-                  <PlusCircle className="w-6 h-6" />
-                  <div className="text-left">
-                    <p className="font-semibold">Add Expense</p>
-                    <p className="text-xs text-emerald-100">Manual entry</p>
-                  </div>
-                </Button>
-
-                <Button 
-                  onClick={handleConnectBank}
-                  variant="outline"
-                  disabled={plaidLoading}
-                  className="h-16 border-2 border-blue-200 hover:border-blue-300 hover:bg-blue-50 rounded-xl justify-start gap-4 px-6 disabled:opacity-50"
-                >
-                  {plaidLoading ? (
-                    <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
-                  ) : bankConnected ? (
-                    <CheckCircle className="w-6 h-6 text-emerald-600" />
-                  ) : (
-                    <Building2 className="w-6 h-6 text-blue-600" />
-                  )}
-                  <div className="text-left">
-                    <p className="font-semibold text-slate-900">
-                      {bankConnected ? 'Bank Connected' : plaidLoading ? 'Connecting...' : 'Connect Bank'}
-                    </p>
-                    <p className="text-xs text-slate-600">
-                      {bankConnected ? 'Auto tracking active' : 'Auto tracking'}
-                    </p>
-                  </div>
-                </Button>
-
-                <Button 
-                  onClick={handleAnalyzeTransactions}
-                  disabled={analyzingTransactions}
-                  variant="outline"
-                  className="h-16 border-2 border-purple-200 hover:border-purple-300 hover:bg-purple-50 rounded-xl justify-start gap-4 px-6 disabled:opacity-50"
-                >
-                  {analyzingTransactions ? (
-                    <Loader2 className="w-6 h-6 text-purple-600 animate-spin" />
-                  ) : (
-                    <Sparkles className="w-6 h-6 text-purple-600" />
-                  )}
-                  <div className="text-left">
-                    <p className="font-semibold text-slate-900">
-                      {analyzingTransactions ? 'Analyzing...' : 'Analyze Transactions'}
-                    </p>
-                    <p className="text-xs text-slate-600">
-                      {analyzingTransactions ? 'AI processing' : 'AI tax analysis'}
-                    </p>
-                  </div>
-                </Button>
-
-                <Button 
-                  onClick={() => onNavigate('tax-calendar')}
-                  variant="outline"
-                  className="h-16 border-2 border-orange-200 hover:border-orange-300 hover:bg-orange-50 rounded-xl justify-start gap-4 px-6"
-                >
-                  <Calendar className="w-6 h-6 text-orange-600" />
-                  <div className="text-left">
-                    <p className="font-semibold text-slate-900">Tax Calendar</p>
-                    <p className="text-xs text-slate-600">Important dates</p>
-                  </div>
-                </Button>
-              </div>
-            </Card>
-
-            {/* AI Test Results Display */}
-            {/* Removed aiTestResult state and display */}
-
-            {/* Analysis Results Display */}
-            {analysisResult && (
-              <Card className={`p-6 shadow-lg ${
-                analysisResult.error 
-                  ? 'bg-red-50 border-red-200' 
-                  : 'bg-green-50 border-green-200'
-              }`}>
-                <div className="flex items-start gap-3">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                    analysisResult.error 
-                      ? 'bg-red-100' 
-                      : 'bg-green-100'
-                  }`}>
-                    {analysisResult.error ? (
-                      <AlertCircle className="w-5 h-5 text-red-600" />
-                    ) : (
-                      <Sparkles className="w-5 h-5 text-green-600" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className={`font-semibold ${
-                        analysisResult.error 
-                          ? 'text-red-800' 
-                          : 'text-green-800'
-                      }`}>
-                        {analysisResult.error ? 'Analysis Failed' : 'Analysis Completed'}
-                      </h3>
-                      <Button 
-                        onClick={() => setAnalysisResult(null)}
-                        variant="ghost"
-                        size="sm"
-                        className="text-slate-400 hover:text-slate-600"
-                      >
-                        ×
-                      </Button>
-                    </div>
-                    
-                    <p className={`text-sm ${
-                      analysisResult.error 
-                        ? 'text-red-600' 
-                        : 'text-green-600'
-                    }`}>
-                      {analysisResult.error 
-                        ? analysisResult.error 
-                        : `Analyzed ${analysisResult.analyzed} out of ${analysisResult.total} transactions`
-                      }
-                    </p>
-                  </div>
-                </div>
-              </Card>
-            )}
-
-            {/* Plaid Error Display */}
-            {plaidError && (
-              <Card className="p-6 bg-red-50 border-red-200 shadow-lg">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
-                    <span className="text-red-600 text-sm">!</span>
-                  </div>
-                  <div>
-                    <p className="text-red-800 font-medium">Connection Error</p>
-                    <p className="text-red-600 text-sm">{plaidError}</p>
-                  </div>
-                  <Button 
-                    onClick={() => setPlaidError(null)}
-                    variant="outline"
-                    size="sm"
-                    className="ml-auto text-red-600 border-red-300 hover:bg-red-100"
+        {/* Main Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
+          {/* Main Content */}
+          <div className="lg:col-span-2 space-y-4 lg:space-y-5">
+            {/* Top Categories */}
+            <div className="bg-white/95 backdrop-blur-sm rounded-xl border border-white/20 shadow-lg animate-[scaleIn_0.3s_ease-out_0.4s_both]">
+              <div className="p-4 lg:p-6">
+                <div className="flex items-center justify-between mb-4 lg:mb-6">
+                  <h3 className="text-base lg:text-lg font-bold text-slate-800">Top Deductible Categories</h3>
+                  <button 
+                    onClick={() => onNavigate('categories')} 
+                    className="text-blue-600 hover:text-blue-700 font-medium px-3 py-1.5 lg:px-4 lg:py-2 rounded-lg hover:bg-blue-50 text-sm transition-colors"
                   >
-                    Dismiss
-                  </Button>
+                    View All
+                  </button>
                 </div>
-              </Card>
-            )}
+                
+                <div>
+                  {topCategories.length > 0 ? (
+                    <div className="space-y-3 lg:space-y-4">
+                      {topCategories.map((categoryData) => {
+                        const category = categoryData[0] as string;
+                        const amount = categoryData[1] as number;
+                        const percentage = totalDeductions > 0 ? (amount / totalDeductions) * 100 : 0;
+                        
+                        return (
+                          <div key={category} className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="font-medium text-slate-800 text-sm lg:text-base">{formatCategory(category)}</span>
+                              <div className="text-right">
+                                <span className="font-semibold text-slate-800 text-sm lg:text-base">${amount.toFixed(0)}</span>
+                                <span className="text-xs lg:text-sm text-slate-600 ml-1 lg:ml-2">(${(amount * 0.3).toFixed(0)} saved)</span>
+                              </div>
+                            </div>
+                            <div className="w-full bg-slate-100 rounded-full h-2">
+                              <div 
+                                className="bg-blue-600 h-2 rounded-full transition-all duration-500" 
+                                style={{ width: `${Math.min(percentage, 100)}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-center py-6 lg:py-8 text-slate-600">
+                      <div className="w-12 h-12 lg:w-16 lg:h-16 bg-slate-100 rounded-xl flex items-center justify-center mx-auto mb-3 lg:mb-4">
+                        <BarChartIcon />
+                      </div>
+                      <p className="text-sm lg:text-base">Start tracking expenses to see category breakdown</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Analyze Transactions Button */}
+            <div className="bg-white/95 backdrop-blur-sm rounded-xl border border-white/20 shadow-lg">
+              <div className="p-4 lg:p-6">
+                <div className="flex items-center justify-between mb-4 lg:mb-6">
+                  <div className="flex items-center gap-2 lg:gap-3">
+                    <div className="w-8 h-8 lg:w-10 lg:h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                      <SparklesIcon />
+                    </div>
+                    <h3 className="text-base lg:text-lg font-bold text-slate-800">AI Analysis</h3>
+                  </div>
+                </div>
+                
+                <div className="space-y-3">
+                  <button
+                    onClick={async () => {
+                      setIsAnalyzing(true);
+                      setAnalysisResult(null);
+                      setAnalysisProgress(null);
+                      
+                      try {
+                        // Call the analysis API directly
+                        const response = await fetch('/api/openai/analyze-with-progress', {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify({ userId: profile.user_id }),
+                        });
+
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                          setAnalysisResult({
+                            analyzed: result.analyzed,
+                            total: result.total
+                          });
+                          
+                          // Refresh transactions to show updated analysis
+                          if (onAnalyzeTransactions) {
+                            await onAnalyzeTransactions();
+                          }
+                        } else {
+                          console.error('Analysis failed:', result.error);
+                          setAnalysisResult({
+                            analyzed: 0,
+                            total: 0
+                          });
+                        }
+                      } catch (error) {
+                        console.error('Error during analysis:', error);
+                        setAnalysisResult({
+                          analyzed: 0,
+                          total: 0
+                        });
+                      } finally {
+                        setIsAnalyzing(false);
+                      }
+                    }}
+                    disabled={isAnalyzing}
+                    className={`w-full p-4 lg:p-5 rounded-lg border transition-all duration-200 text-left group ${
+                      isAnalyzing 
+                        ? 'bg-slate-50 border-slate-200 text-slate-500' 
+                        : 'bg-purple-50 border-purple-200 hover:bg-purple-100 text-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`w-6 h-6 lg:w-8 lg:h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                        isAnalyzing ? 'bg-slate-200' : 'bg-purple-200'
+                      }`}>
+                        {isAnalyzing ? (
+                          <div className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div>
+                        ) : (
+                          <SparklesIcon />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium mb-1 text-sm lg:text-base">
+                          {isAnalyzing ? 'Analyzing transactions...' : 'Analyze Transactions with AI'}
+                        </div>
+                        <p className="text-xs lg:text-sm text-slate-600">
+                          {isAnalyzing 
+                            ? 'AI is processing your transactions for tax deductions' 
+                            : 'Use AI to automatically categorize and identify tax deductions'
+                          }
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                  
+                  {/* Analysis Progress Popup */}
+                  {isAnalyzing && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 animate-in slide-in-from-top-2 duration-300">
+                      <div className="flex items-start gap-3">
+                        <div className="w-6 h-6 bg-blue-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                        <div className="flex-1">
+                          <div className="font-medium text-blue-800 mb-1">
+                            Analyzing Transactions...
+                          </div>
+                          <p className="text-sm text-blue-700">
+                            Processing transactions with AI analysis
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Analysis Result Popup */}
+                  {analysisResult && !isAnalyzing && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 animate-in slide-in-from-top-2 duration-300">
+                      <div className="flex items-start gap-3">
+                        <div className="w-6 h-6 bg-emerald-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <CheckCircleIcon />
+                        </div>
+                        <div className="flex-1">
+                          <div className="font-medium text-emerald-800 mb-1">
+                            Analysis Complete!
+                          </div>
+                          <p className="text-sm text-emerald-700">
+                            Successfully analyzed {analysisResult.analyzed} out of {analysisResult.total} transactions
+                          </p>
+                        </div>
+                        <button 
+                          onClick={() => setAnalysisResult(null)}
+                          className="text-emerald-600 hover:text-emerald-700 transition-colors"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
 
             {/* Recent Activity */}
-            <Card className="p-8 bg-white border-0 shadow-xl">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="text-xl font-semibold text-slate-900">Recent Transactions</h3>
-                  <p className="text-slate-600">Your latest business expenses</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
-                    <Input
-                      placeholder="Search transactions..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10 w-48"
-                    />
-                  </div>
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <Filter className="w-4 h-4" />
-                    Filter
-                  </Button>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                {displayTransactions.length === 0 ? (
-                  <div className="text-center py-8">
-                    <FileText className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-                    <p className="text-sm text-slate-600 mb-2">No transactions found</p>
-                    <p className="text-xs text-slate-500">Connect your bank account to see transactions</p>
-                  </div>
-                ) : (
-                  displayTransactions.map((transaction) => (
-                  <div 
-                    key={transaction.id} 
-                    className="flex items-center justify-between p-4 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
-                    onClick={() => onNavigate('transactions')}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
+              <div className="p-4 lg:p-6">
+                <div className="flex items-center justify-between mb-4 lg:mb-6">
+                  <h3 className="text-base lg:text-lg font-bold text-slate-800">Recent Activity</h3>
+                  <button 
+                    onClick={() => onNavigate('transactions')} 
+                    className="text-blue-600 hover:text-blue-700 font-medium px-3 py-1.5 lg:px-4 lg:py-2 rounded-lg hover:bg-blue-50 text-sm transition-colors"
                   >
-                    <div className="flex items-center gap-4">
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                        transaction.type === 'income' 
-                          ? 'bg-emerald-100' 
-                          : 'bg-blue-100'
-                      }`}>
-                        {transaction.type === 'income' ? (
-                          <TrendingUp className="w-5 h-5 text-emerald-600" />
-                        ) : (
-                          <FileText className="w-5 h-5 text-blue-600" />
-                        )}
-                      </div>
-                      <div>
-                        <p className="font-medium text-slate-900">
-                          {transaction.merchant_name || transaction.description || 'Unknown Transaction'}
-                        </p>
-                        <div className="flex items-center gap-2 text-sm text-slate-600">
-                          <span>{transaction.category}</span>
-                          <span>•</span>
-                          <span>{new Date(transaction.date).toLocaleDateString()}</span>
-                          <span>•</span>
-                          <span className={`font-medium ${
-                            transaction.type === 'income' 
-                              ? 'text-emerald-600' 
-                              : 'text-slate-600'
-                          }`}>
-                            {transaction.type === 'income' ? 'Revenue' : 'Expense'}
-                          </span>
-                        </div>
-                        {/* Show deduction indicator only for expenses */}
-                        {transaction.type === 'expense' && (
-                          <div className="mt-2">
-                            <DeductionIndicator
-                              isDeductible={transaction.isDeductible}
-                              confidenceScore={transaction.confidenceScore}
-                              deductibleReason={transaction.deductibleReason}
-                              compact={true}
-                            />
+                    View All
+                  </button>
+                </div>
+                
+                <div className="space-y-3">
+                  {transactions.slice(0, 5).map((transaction) => {
+                    let statusIndicator = 'bg-amber-200';
+                    if (transaction.is_deductible === true) {
+                      statusIndicator = 'bg-emerald-200';
+                    } else if (transaction.is_deductible === false) {
+                      statusIndicator = 'bg-red-200';
+                    }
+                    
+                    return (
+                      <div 
+                        key={transaction.id} 
+                        className="flex items-center justify-between p-3 lg:p-4 hover:bg-slate-50 rounded-lg cursor-pointer group transition-colors"
+                        onClick={() => onTransactionClick(transaction)}
+                      >
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <div className={`w-2 h-2 lg:w-3 lg:h-3 rounded-full ${statusIndicator} flex-shrink-0`} />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-slate-800 group-hover:text-blue-600 transition-colors text-sm lg:text-base truncate">
+                              {transaction.merchant_name || transaction.description || 'Unknown Merchant'}
+                            </div>
+                            <div className="text-xs lg:text-sm text-slate-600 truncate">
+                              {formatCategory(transaction.category)} • {new Date(transaction.date).toLocaleDateString()}
+                            </div>
                           </div>
-                        )}
+                        </div>
+                        <div className="text-right flex-shrink-0 ml-3">
+                          <div className="font-semibold text-slate-800 text-sm lg:text-base">${Math.abs(transaction.amount).toFixed(2)}</div>
+                          {transaction.is_deductible === true && (
+                            <div className="text-xs text-emerald-600">+${Math.abs(transaction.amount).toFixed(2)} saved</div>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className={`font-bold ${
-                          transaction.type === 'income' 
-                            ? 'text-emerald-600' 
-                            : 'text-slate-900'
-                        }`}>
-                          ${Math.abs(transaction.amount || 0).toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )))}
+                    );
+                  })}
+                </div>
               </div>
-
-              <div className="mt-6 text-center">
-                <Button 
-                  onClick={() => onNavigate('transactions')}
-                  variant="outline" 
-                  className="gap-2"
-                >
-                  View All Transactions
-                  <ArrowRight className="w-4 h-4" />
-                </Button>
-              </div>
-            </Card>
+            </div>
           </div>
 
-          {/* Right Column - Profile & Notifications */}
-          <div className="space-y-6 px-6">
-            {/* Profile Info */}
-            <Card className="p-6 bg-white border-0 shadow-xl">
-              <div className="text-center mb-6">
-                <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <span className="text-white font-bold text-xl">
-                    {user?.user_metadata?.name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase()}
-                  </span>
-                </div>
-                <h3 className="text-lg font-semibold text-slate-900">{user?.user_metadata?.name || 'User'}</h3>
-                <p className="text-sm text-slate-600">Professional</p>
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-sm text-slate-600">Monthly Expenses</span>
-                  <span className="text-sm font-medium text-slate-900">$2,135</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-slate-600">This Month's Savings</span>
-                  <span className="text-sm font-medium text-emerald-600">$640</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-slate-600">Bank Connected</span>
-                  <span className="text-sm font-medium text-emerald-600">Yes</span>
-                </div>
-              </div>
-
-              <Button 
-                onClick={() => onNavigate('settings')}
-                variant="outline" 
-                className="w-full mt-4"
-              >
-                Edit Profile
-              </Button>
-            </Card>
-
-            {/* Notifications */}
-            <Card className="p-6 bg-white border-0 shadow-xl">
-              <h3 className="text-lg font-semibold text-slate-900 mb-4">Recent Notifications</h3>
-              <div className="space-y-3">
-                {notifications.map((notification) => (
-                  <div key={notification.id} className="p-3 bg-slate-50 rounded-lg">
-                    <p className="text-sm text-slate-900">{notification.message}</p>
-                    <p className="text-xs text-slate-500 mt-1">{notification.time}</p>
+          {/* Sidebar */}
+          <div className="space-y-4 lg:space-y-5">
+            {/* Progress Card */}
+            <div className="bg-white/95 backdrop-blur-sm rounded-xl border border-white/20 p-4 lg:p-6 shadow-lg">
+              <h3 className="font-bold text-slate-800 mb-4 text-sm lg:text-base">2024 Tax Year Progress</h3>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs lg:text-sm text-slate-600">Deductions Tracked</span>
+                    <span className="font-semibold text-slate-800 text-sm lg:text-base">${totalDeductions.toFixed(0)}</span>
                   </div>
-                ))}
+                  <div className="w-full bg-slate-100 rounded-full h-2">
+                    <div 
+                      className="bg-blue-600 h-2 rounded-full transition-all duration-500" 
+                      style={{ width: `${Math.min((totalDeductions / 10000) * 100, 100)}%` }}
+                    ></div>
+                  </div>
+                  <div className="text-xs text-slate-500 mt-1">Goal: $10,000 annual deductions</div>
+                </div>
+                <div className="pt-3 border-t border-slate-100">
+                  <div className="text-xs lg:text-sm text-slate-600 mb-1">Projected Annual</div>
+                  <div className="text-lg lg:text-xl font-semibold text-emerald-600">${projectedAnnualSavings.toFixed(0)}</div>
+                  <div className="text-xs text-slate-500">in tax savings</div>
+                </div>
               </div>
-              <Button variant="outline" size="sm" className="w-full mt-4">
-                View All Notifications
-              </Button>
-            </Card>
+            </div>
 
-            {/* Tax Tips */}
-            <Card className="p-6 bg-gradient-to-br from-blue-600 to-blue-700 border-0 shadow-xl text-white">
-              <div className="mb-4">
-                <h3 className="text-lg font-semibold mb-2">💡 Tax Tip</h3>
-                <p className="text-sm text-blue-100">
-                  Track your home office expenses! If you work from home, you may be able to deduct a portion of your rent, utilities, and office supplies.
-                </p>
+            {/* Quick Actions */}
+            <div className="bg-white/95 backdrop-blur-sm rounded-xl border border-white/20 p-4 lg:p-6 shadow-lg">
+              <h3 className="font-bold text-slate-800 mb-4 text-sm lg:text-base">Quick Actions</h3>
+              <div className="space-y-3">
+                {uncategorizedCount > 0 && (
+                  <button 
+                    onClick={() => onNavigate('review-transactions')} 
+                    className="w-full p-3 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-left transition-colors"
+                  >
+                    <div className="flex items-center gap-2 lg:gap-3">
+                      <div className="w-6 h-6 lg:w-8 lg:h-8 bg-amber-200 rounded-lg flex items-center justify-center text-amber-700">
+                        <ClockIcon />
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-800 text-sm lg:text-base">Review Transactions</div>
+                        <div className="text-xs lg:text-sm text-slate-600">{uncategorizedCount} pending</div>
+                      </div>
+                    </div>
+                  </button>
+                )}
+                <button 
+                  onClick={() => onNavigate('transactions')} 
+                  className="w-full p-3 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-left transition-colors"
+                >
+                  <div className="flex items-center gap-2 lg:gap-3">
+                    <div className="w-6 h-6 lg:w-8 lg:h-8 bg-emerald-200 rounded-lg flex items-center justify-center text-emerald-700">
+                      <FileTextIcon />
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-800 text-sm lg:text-base">View All Transactions</div>
+                      <div className="text-xs lg:text-sm text-slate-600">Manage your expenses</div>
+                    </div>
+                  </div>
+                </button>
+                <button 
+                  onClick={() => onNavigate('schedule-c')} 
+                  className="w-full p-3 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg text-left transition-colors"
+                >
+                  <div className="flex items-center gap-2 lg:gap-3">
+                    <div className="w-6 h-6 lg:w-8 lg:h-8 bg-blue-200 rounded-lg flex items-center justify-center text-blue-700">
+                      <FileTextIcon />
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-800 text-sm lg:text-base">Export Schedule C</div>
+                      <div className="text-xs lg:text-sm text-slate-600">Download tax forms</div>
+                    </div>
+                  </div>
+                </button>
               </div>
-              <Button size="sm" variant="secondary" className="w-full">
-                Learn More
-              </Button>
-            </Card>
+            </div>
           </div>
         </div>
       </div>
     </div>
   );
-};
+}

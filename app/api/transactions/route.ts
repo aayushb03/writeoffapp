@@ -30,15 +30,15 @@ export async function GET(request: NextRequest) {
     // Transform database fields to match UI expectations
     const transformedTransactions = transactions?.map(transaction => ({
       id: transaction.trans_id,
-      description: transaction.merchant_name || 'Unknown Transaction',
+      merchant_name: transaction.merchant_name || 'Unknown Transaction',
       amount: transaction.amount,
       category: transaction.category,
       date: transaction.date,
-      type: transaction.amount < 0 ? 'income' : 'expense', // Fixed: negative = income, positive = expense
-      isDeductible: transaction.is_deductible || false,
-      deductibleReason: transaction.deductible_reason,
-      confidenceScore: transaction.deduction_score,
-      merchant_name: transaction.merchant_name,
+      type: transaction.amount < 0 ? 'income' : 'expense',
+      is_deductible: transaction.is_deductible,
+      deductible_reason: transaction.deductible_reason,
+      deduction_score: transaction.deduction_score,
+      description: transaction.merchant_name,
       account_id: transaction.account_id,
     })) || [];
 

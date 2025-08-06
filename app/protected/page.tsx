@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ProfileSetupScreen } from "@/components/profile-setup-screen";
-import { DashboardScreen } from "@/components/dashboard-screen";
+import DashboardScreen from "@/components/dashboard-screen";
 import { SettingsScreen } from "@/components/settings-screen";
 import { DebugProfile } from "@/components/debug-profile";
 import { AddExpenseScreen } from "@/components/add-expense-screen";
@@ -32,48 +32,39 @@ interface UserProfile {
 
 interface Transaction {
   id: string;
-  description: string;
+  merchant_name: string;
   amount: number;
   category: string;
   date: string;
-  type: 'expense' | 'income';
-  isDeductible: boolean;
-  deductibleReason?: string;
-  confidenceScore?: number;
+  type?: 'expense' | 'income';
+  is_deductible: boolean;
+  deductible_reason?: string;
+  deduction_score?: number;
+  description?: string;
   notes?: string;
 }
 
 export default function ProtectedPage() {
   const [user, setUser] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
   const [hasProfile, setHasProfile] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [currentScreen, setCurrentScreen] = useState<'dashboard' | 'settings' | 'debug' | 'add-expense' | 'receipt-upload' | 'tax-calendar' | 'transactions' | 'edit-expense' | 'deductions-detail' | 'expenses-detail' | 'banks-detail' | 'profit-loss-detail'>('dashboard');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
+  const [analyzingTransactions, setAnalyzingTransactions] = useState(false);
   const [bankConnected, setBankConnected] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
-  // Fetch transactions from database and sync from Plaid
+  // Fetch transactions from database
   const fetchTransactions = async () => {
     if (!user?.id) return;
     
     setLoadingTransactions(true);
     try {
-      // First, sync transactions from Plaid if bank is connected
-      if (bankConnected) {
-        console.log('🔄 Syncing transactions from Plaid...');
-        const syncResult = await syncTransactions(user.id);
-        
-        if (syncResult.success) {
-          console.log(`✅ Synced ${syncResult.transactionsSaved} new transactions from Plaid`);
-        } else {
-          console.error('❌ Failed to sync transactions:', syncResult.error);
-        }
-      }
-
-      // Then fetch all transactions from database via server-side API
+      // Fetch all transactions from database via server-side API
       console.log('📊 Fetching transactions from database via API...');
       const response = await fetch(`/api/transactions?userId=${user.id}`);
       const result = await response.json();
@@ -103,7 +94,17 @@ export default function ProtectedPage() {
       
       if (profile?.plaid_token) {
         setBankConnected(true);
-        // Fetch transactions if bank is connected
+        // Sync transactions from Plaid first, then fetch from database
+        console.log('🔄 Syncing transactions from Plaid...');
+        const syncResult = await syncTransactions(currentUser.id);
+        
+        if (syncResult.success) {
+          console.log(`✅ Synced ${syncResult.transactionsSaved} new transactions from Plaid`);
+        } else {
+          console.error('❌ Failed to sync transactions:', syncResult.error);
+        }
+        
+        // Then fetch all transactions from database
         await fetchTransactions();
       } else {
         setBankConnected(false);
@@ -155,6 +156,7 @@ export default function ProtectedPage() {
           }
         } else {
           setHasProfile(!!profile);
+          setUserProfile(profile);
           // If user has profile, check bank connection and fetch transactions
           if (profile) {
             await checkBankConnectionAndFetchTransactions(currentUser);
@@ -265,12 +267,12 @@ export default function ProtectedPage() {
   const handleReceiptUploadComplete = (expenseData: any) => {
     const transaction: Transaction = {
       id: expenseData.id,
-      description: expenseData.description,
+      merchant_name: expenseData.description,
       amount: expenseData.amount,
       category: expenseData.category,
       date: expenseData.date,
       type: 'expense',
-      isDeductible: expenseData.isDeductible,
+      is_deductible: expenseData.isDeductible,
       notes: `Receipt uploaded: ${expenseData.receipt?.fileName || 'receipt.jpg'}`
     };
     handleSaveTransaction(transaction);
@@ -409,11 +411,20 @@ export default function ProtectedPage() {
     
     return (
       <DashboardScreen 
-        user={user} 
-        onSignOut={handleSignOut}
-        onNavigate={handleNavigate}
+        profile={userProfile}
         transactions={transactions}
-        onRefreshTransactions={fetchTransactions}
+        onNavigate={handleNavigate}
+        onTransactionClick={(transaction) => handleEditTransaction(transaction)}
+        onAnalyzeTransactions={async () => {
+          setAnalyzingTransactions(true);
+          try {
+            await fetchTransactions();
+          } finally {
+            setAnalyzingTransactions(false);
+          }
+        }}
+        analyzingTransactions={analyzingTransactions}
+        onSignOut={handleSignOut}
       />
     );
   }
