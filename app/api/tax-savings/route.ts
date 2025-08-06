@@ -52,9 +52,15 @@ export async function GET(request: NextRequest) {
       return transactionDate >= startOfMonth && transactionDate <= endOfMonth;
     });
 
-    // Calculate totals
-    const yearToDateTotal = yearToDateTransactions.reduce((sum, t) => sum + t.amount, 0);
-    const currentMonthTotal = currentMonthTransactions.reduce((sum, t) => sum + t.amount, 0);
+    // Calculate totals using savings_percentage for accurate deductible amounts
+    const yearToDateTotal = yearToDateTransactions.reduce((sum, t) => {
+      const deductibleAmount = t.amount * (t.savings_percentage || 100) / 100;
+      return sum + deductibleAmount;
+    }, 0);
+    const currentMonthTotal = currentMonthTransactions.reduce((sum, t) => {
+      const deductibleAmount = t.amount * (t.savings_percentage || 100) / 100;
+      return sum + deductibleAmount;
+    }, 0);
     
     // Tax savings calculation (assuming 30% tax rate)
     const taxRate = 0.30;

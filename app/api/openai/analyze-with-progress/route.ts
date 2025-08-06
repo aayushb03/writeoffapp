@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import OpenAI from 'openai';
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+import { analyzeTransactionDeductibility } from '@/lib/openai/analysis';
 
 export async function POST(request: NextRequest) {
   try {
@@ -108,27 +104,6 @@ export async function POST(request: NextRequest) {
 
     console.log(`🤖 Analyzing ${transactionsToAnalyze.length} transactions for user ${userId}`);
 
-    // Create context for OpenAI analysis
-    const userContext = `
-User Profile:
-- Profession: ${userProfile.profession}
-- Income: ${userProfile.income}
-- State: ${userProfile.state}
-- Filing Status: ${userProfile.filing_status}
-
-Analysis Instructions:
-For each transaction, determine if it's tax deductible for this business owner. Consider:
-1. The user's profession and business type
-2. Current tax laws and regulations
-3. Whether the expense is ordinary and necessary for their business
-4. The specific details of each transaction
-
-Provide:
-- is_deductible: true/false
-- deductible_reason: Detailed explanation of why it is or isn't deductible
-- deduction_score: Confidence score from 0.0 to 1.0 (0.0 = not deductible, 1.0 = definitely deductible)
-`;
-
     let analyzedCount = 0;
     const analysisResults = [];
 
@@ -137,82 +112,37 @@ Provide:
       try {
         console.log(`📊 Analyzing transaction: ${transaction.merchant_name} - $${transaction.amount}`);
 
-        const prompt = `${userContext}
-
-Transaction to analyze:
-- Merchant: ${transaction.merchant_name}
-- Amount: $${transaction.amount}
-- Category: ${transaction.category}
-- Date: ${transaction.date}
-- Account: ${transaction.account_id}
-
-Please analyze this transaction and respond with a JSON object containing:
-{
-  "is_deductible": boolean,
-  "deductible_reason": "detailed explanation",
-  "deduction_score": number (0.0 to 1.0)
-}`;
-
-        const completion = await openai.chat.completions.create({
-          model: "gpt-4",
-          messages: [
-            {
-              role: "system",
-              content: "You are a tax expert specializing in business deductions. Provide accurate, detailed analysis of whether business expenses are tax deductible."
-            },
-            {
-              role: "user",
-              content: prompt
-            }
-          ],
-          temperature: 0.1,
-          max_tokens: 500,
-        });
-
-        const responseText = completion.choices[0]?.message?.content;
+        const analysis = await analyzeTransactionDeductibility(transaction);
         
-        if (responseText) {
-          try {
-            // Extract JSON from response
-            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-              const analysis = JSON.parse(jsonMatch[0]);
-              
-              console.log(`📊 Analysis result for ${transaction.merchant_name}:`, analysis);
-              
-              // Update transaction in database - preserve existing category
-              const { error: updateError } = await supabase
-                .from('transactions')
-                .update({
-                  is_deductible: analysis.is_deductible,
-                  deductible_reason: analysis.deductible_reason,
-                  deduction_score: analysis.deduction_score,
-                  // Preserve the existing category
-                  category: transaction.category,
-                })
-                .eq('trans_id', transaction.trans_id)
-                .eq('account_id', transaction.account_id);
+        if (analysis.success) {
+          console.log(`📊 Analysis result for ${transaction.merchant_name}:`, analysis);
+          
+          // Update transaction in database - preserve existing category and user notes
+          const { error: updateError } = await supabase
+            .from('transactions')
+            .update({
+              is_deductible: analysis.is_deductible,
+              deductible_reason: analysis.deduction_reason,
+              deduction_score: analysis.deduction_score,
+              savings_percentage: analysis.deduction_percent,
+            })
+            .eq('trans_id', transaction.trans_id)
+            .eq('account_id', transaction.account_id);
 
-              if (updateError) {
-                console.error(`❌ Failed to update transaction ${transaction.trans_id}:`, updateError);
-              } else {
-                console.log(`✅ Successfully updated transaction: ${transaction.merchant_name} (${transaction.trans_id})`);
-                
-                analyzedCount++;
-                analysisResults.push({
-                  transaction_id: transaction.trans_id,
-                  merchant_name: transaction.merchant_name,
-                  analysis: analysis,
-                });
-              }
-            } else {
-              console.error(`❌ No JSON found in response for transaction ${transaction.trans_id}`);
-            }
-          } catch (parseError) {
-            console.error(`❌ Failed to parse analysis for transaction ${transaction.trans_id}:`, parseError);
+          if (updateError) {
+            console.error(`❌ Failed to update transaction ${transaction.trans_id}:`, updateError);
+          } else {
+            console.log(`✅ Successfully updated transaction: ${transaction.merchant_name} (${transaction.trans_id})`);
+            
+            analyzedCount++;
+            analysisResults.push({
+              transaction_id: transaction.trans_id,
+              merchant_name: transaction.merchant_name,
+              analysis: analysis,
+            });
           }
         } else {
-          console.error(`❌ No response from OpenAI for transaction ${transaction.trans_id}`);
+          console.error(`❌ Analysis failed for transaction ${transaction.trans_id}:`, analysis.error);
         }
 
         // Add a small delay to avoid rate limiting

@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
         // For existing transactions, preserve their current category and analysis
         const existingTransactions = await supabase
           .from('transactions')
-          .select('trans_id, category, is_deductible, deductible_reason, deduction_score')
+          .select('trans_id, category, is_deductible, deductible_reason, deduction_score, savings_percentage, notes')
           .in('trans_id', transactionsToSave.map(t => t.trans_id));
 
         if (existingTransactions.data) {
@@ -157,6 +157,12 @@ export async function POST(request: NextRequest) {
               }
               if (existing.deduction_score !== null) {
                 transaction.deduction_score = existing.deduction_score;
+              }
+              if (existing.savings_percentage !== null) {
+                transaction.savings_percentage = existing.savings_percentage;
+              }
+              if (existing.notes) {
+                transaction.notes = existing.notes;
               }
             }
           });

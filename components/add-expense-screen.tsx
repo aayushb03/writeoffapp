@@ -58,6 +58,7 @@ export const AddExpenseScreen: React.FC<EditExpenseScreenProps> = ({
 }) => {
   const [notes, setNotes] = useState(editingExpense?.notes || '');
   const [saving, setSaving] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
 
   if (!editingExpense) return null;
 
@@ -86,6 +87,46 @@ export const AddExpenseScreen: React.FC<EditExpenseScreenProps> = ({
 
   const handleNotesChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setNotes(e.target.value);
+  };
+
+  const handleSaveNotes = async () => {
+    if (!notes.trim()) return;
+    
+    setAnalyzing(true);
+    try {
+      const response = await fetch('/api/openai/analyze-single-transaction', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          transactionId: editingExpense.id,
+          notes: notes.trim()
+        }),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ Notes saved and transaction re-analyzed');
+        // Update the local expense with new analysis
+        const updatedExpense = {
+          ...editingExpense,
+          notes: notes.trim(),
+          is_deductible: result.analysis.is_deductible,
+          deductible_reason: result.analysis.deductible_reason,
+          deduction_score: result.analysis.deduction_score,
+          savings_percentage: result.analysis.savings_percentage
+        };
+        onSave(updatedExpense);
+      } else {
+        console.error('❌ Failed to save notes:', result.error);
+      }
+    } catch (error) {
+      console.error('❌ Error saving notes:', error);
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   const handleStatusUpdate = (status: string) => {
@@ -178,13 +219,15 @@ export const AddExpenseScreen: React.FC<EditExpenseScreenProps> = ({
               />
               <div className="mt-4">
                 <button 
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  onClick={() => {
-                    // Placeholder for future functionality
-                    console.log('Save notes clicked');
-                  }}
+                  className={`px-4 py-2 rounded-lg transition-colors ${
+                    analyzing 
+                      ? 'bg-slate-100 text-slate-500 cursor-not-allowed' 
+                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
+                  onClick={handleSaveNotes}
+                  disabled={analyzing || !notes.trim()}
                 >
-                  Save Notes
+                  {analyzing ? 'Analyzing...' : 'Save Notes'}
                 </button>
               </div>
             </div>
@@ -212,7 +255,10 @@ export const AddExpenseScreen: React.FC<EditExpenseScreenProps> = ({
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-slate-600">Tax Savings</span>
                   <span className="font-semibold text-emerald-600">
-                    {editingExpense.is_deductible === true ? `$${Math.abs(editingExpense.amount).toFixed(2)}` : '$0.00'}
+                    {editingExpense.is_deductible === true && editingExpense.savings_percentage !== undefined && editingExpense.savings_percentage > 0
+                      ? `$${((Math.abs(editingExpense.amount) * editingExpense.savings_percentage / 100) * 0.3).toFixed(2)}`
+                      : '$0.00'
+                    }
                   </span>
                 </div>
               </div>
@@ -271,10 +317,14 @@ export const AddExpenseScreen: React.FC<EditExpenseScreenProps> = ({
                   <div className="text-sm text-blue-800">{formatCategory(editingExpense.category)}</div>
                 </div>
                 
-                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
-                  <div className="text-xs font-medium text-emerald-900 mb-1">Est. Tax Rate</div>
-                  <div className="text-sm text-emerald-800">30%</div>
-                </div>
+                {editingExpense.savings_percentage !== undefined && editingExpense.savings_percentage > 0 && (
+                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
+                    <div className="text-xs font-medium text-emerald-900 mb-1">Est. Deduction %</div>
+                    <div className="text-sm text-emerald-800">
+                      {editingExpense.savings_percentage}%
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

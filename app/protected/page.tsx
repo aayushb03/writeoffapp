@@ -180,12 +180,27 @@ export default function ProtectedPage() {
     }
   }, [currentScreen, user?.id, hasProfile]);
 
-  const handleProfileComplete = (profile: UserProfile) => {
+  const handleProfileComplete = async (profile: UserProfile) => {
     console.log('Profile setup completed:', profile);
     setHasProfile(true);
-    // Check bank connection and fetch transactions after profile completion
+    
+    // Fetch the complete profile from database to ensure we have all fields
     if (user) {
-      checkBankConnectionAndFetchTransactions(user);
+      try {
+        const { data: userProfile, error: profileError } = await getUserProfile(user.id);
+        
+        if (profileError) {
+          console.error('Error fetching user profile after completion:', profileError);
+        } else {
+          console.log('✅ User profile loaded after completion:', userProfile);
+          setUserProfile(userProfile);
+        }
+        
+        // Check bank connection and fetch transactions after profile completion
+        await checkBankConnectionAndFetchTransactions(user);
+      } catch (error) {
+        console.error('Error in handleProfileComplete:', error);
+      }
     }
   };
 

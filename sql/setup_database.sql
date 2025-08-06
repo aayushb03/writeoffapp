@@ -91,6 +91,8 @@ CREATE TABLE IF NOT EXISTS transactions (
   is_deductible BOOLEAN DEFAULT FALSE,
   deductible_reason TEXT,
   deduction_score NUMERIC,
+  savings_percentage NUMERIC DEFAULT 30.0,
+  notes TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

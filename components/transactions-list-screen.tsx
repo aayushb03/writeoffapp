@@ -47,6 +47,12 @@ const FileTextIcon: React.FC<{ className?: string }> = ({ className }) => (
   </svg>
 );
 
+const TrendingUpIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+  </svg>
+);
+
 interface Transaction {
   id: string;
   merchant_name: string;
@@ -56,6 +62,7 @@ interface Transaction {
   is_deductible: boolean;
   deduction_score?: number;
   deductible_reason?: string;
+  savings_percentage?: number;
   description?: string;
   type?: 'expense' | 'income';
 }
@@ -144,6 +151,21 @@ export const TransactionsListScreen: React.FC<TransactionsListScreenProps> = ({
   });
 
   const getStatusConfig = (transaction: Transaction) => {
+    const isIncome = transaction.amount < 0;
+    
+    // For income transactions, use trending up icon
+    if (isIncome) {
+      return { 
+        icon: <TrendingUpIcon />,
+        bg: 'bg-emerald-50', 
+        border: 'border-emerald-200',
+        text: 'text-emerald-700',
+        iconBg: 'bg-emerald-100',
+        status: 'Income'
+      };
+    }
+    
+    // For expense transactions, use normal deduction logic
     if (transaction.is_deductible === true) {
       return { 
         icon: <CheckCircleIcon />,
@@ -293,6 +315,8 @@ export const TransactionsListScreen: React.FC<TransactionsListScreenProps> = ({
         <div className="space-y-3 lg:space-y-4">
           {filteredTransactions.map((transaction) => {
             const statusConfig = getStatusConfig(transaction);
+            const isIncome = transaction.amount < 0;
+            const amount = Math.abs(transaction.amount);
 
             return (
               <div key={transaction.id} className="bg-white rounded-xl border border-white/20 shadow-sm hover:shadow-md transition-all duration-200">
@@ -321,7 +345,7 @@ export const TransactionsListScreen: React.FC<TransactionsListScreenProps> = ({
                         
                         <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-xs lg:text-sm text-slate-600">
                           <span className="font-medium text-blue-600 truncate">
-                            {formatCategory(transaction.category)}
+                            {isIncome ? 'Income' : formatCategory(transaction.category)}
                           </span>
                           <span className="hidden sm:inline">•</span>
                           <span className="flex-shrink-0">{new Date(transaction.date).toLocaleDateString()}</span>
@@ -337,12 +361,12 @@ export const TransactionsListScreen: React.FC<TransactionsListScreenProps> = ({
                     
                     {/* Amount */}
                     <div className="text-right flex-shrink-0">
-                      <div className="text-sm lg:text-lg font-semibold text-slate-800">
-                        ${Math.abs(transaction.amount).toFixed(2)}
+                      <div className={`text-sm lg:text-lg font-semibold ${isIncome ? 'text-emerald-600' : 'text-slate-800'}`}>
+                        {isIncome ? '+' : ''}${amount.toFixed(2)}
                       </div>
-                      {transaction.is_deductible === true && (
+                      {transaction.is_deductible === true && !isIncome && transaction.savings_percentage !== undefined && transaction.savings_percentage > 0 && (
                         <div className="text-xs lg:text-sm text-emerald-600 font-medium">
-                          +${Math.abs(transaction.amount).toFixed(2)} saved
+                          +${(amount * transaction.savings_percentage / 100 * 0.3).toFixed(2)} saved
                         </div>
                       )}
                     </div>

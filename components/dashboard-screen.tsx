@@ -161,7 +161,9 @@ export default function DashboardScreen({
     for (let i = 0; i < transactions.length; i++) {
       const transaction = transactions[i];
       if (transaction && transaction.is_deductible === true && transaction.amount) {
-        totalDeductions += transaction.amount;
+        // Use savings_percentage to calculate actual deductible amount
+        const deductibleAmount = transaction.amount * (transaction.savings_percentage || 100) / 100;
+        totalDeductions += deductibleAmount;
       }
       
       if (transaction && transaction.is_deductible === null) {
@@ -177,10 +179,12 @@ export default function DashboardScreen({
   for (let i = 0; i < transactions.length; i++) {
     const transaction = transactions[i];
     if (transaction && transaction.is_deductible === true && transaction.category && transaction.amount) {
+      // Use savings_percentage to calculate actual deductible amount
+      const deductibleAmount = transaction.amount * (transaction.savings_percentage || 100) / 100;
       if (categoryBreakdown[transaction.category]) {
-        categoryBreakdown[transaction.category] += transaction.amount;
+        categoryBreakdown[transaction.category] += deductibleAmount;
       } else {
-        categoryBreakdown[transaction.category] = transaction.amount;
+        categoryBreakdown[transaction.category] = deductibleAmount;
       }
     }
   }
@@ -412,6 +416,16 @@ export default function DashboardScreen({
                       setAnalysisProgress(null);
                       
                       try {
+                        // Check if profile exists before proceeding
+                        if (!profile || !profile.user_id) {
+                          console.error('Profile or user_id not available');
+                          setAnalysisResult({
+                            analyzed: 0,
+                            total: 0
+                          });
+                          return;
+                        }
+
                         // Call the analysis API directly
                         const response = await fetch('/api/openai/analyze-with-progress', {
                           method: 'POST',
@@ -450,30 +464,24 @@ export default function DashboardScreen({
                         setIsAnalyzing(false);
                       }
                     }}
-                    disabled={isAnalyzing}
+                    disabled={isAnalyzing || !profile?.user_id}
                     className={`w-full p-4 lg:p-5 rounded-lg border transition-all duration-200 text-left group ${
-                      isAnalyzing 
-                        ? 'bg-slate-50 border-slate-200 text-slate-500' 
+                      isAnalyzing || !profile?.user_id
+                        ? 'bg-slate-50 border-slate-200 text-slate-500 cursor-not-allowed' 
                         : 'bg-purple-50 border-purple-200 hover:bg-purple-100 text-slate-800'
                     }`}
                   >
                     <div className="flex items-start gap-3">
-                      <div className={`w-6 h-6 lg:w-8 lg:h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                        isAnalyzing ? 'bg-slate-200' : 'bg-purple-200'
-                      }`}>
-                        {isAnalyzing ? (
-                          <div className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div>
-                        ) : (
-                          <SparklesIcon />
-                        )}
+                      <div className="w-6 h-6 lg:w-8 lg:h-8 bg-purple-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <SparklesIcon />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="font-medium mb-1 text-sm lg:text-base">
-                          {isAnalyzing ? 'Analyzing transactions...' : 'Analyze Transactions with AI'}
+                          {!profile?.user_id ? 'Loading...' : 'Analyze Transactions with AI'}
                         </div>
                         <p className="text-xs lg:text-sm text-slate-600">
-                          {isAnalyzing 
-                            ? 'AI is processing your transactions for tax deductions' 
+                          {!profile?.user_id 
+                            ? 'Please wait while we load your profile...' 
                             : 'Use AI to automatically categorize and identify tax deductions'
                           }
                         </p>
@@ -543,6 +551,9 @@ export default function DashboardScreen({
                 
                 <div className="space-y-3">
                   {transactions.slice(0, 5).map((transaction) => {
+                    const isIncome = transaction.amount < 0;
+                    const amount = Math.abs(transaction.amount);
+                    
                     let statusIndicator = 'bg-amber-200';
                     if (transaction.is_deductible === true) {
                       statusIndicator = 'bg-emerald-200';
@@ -563,14 +574,16 @@ export default function DashboardScreen({
                               {transaction.merchant_name || transaction.description || 'Unknown Merchant'}
                             </div>
                             <div className="text-xs lg:text-sm text-slate-600 truncate">
-                              {formatCategory(transaction.category)} • {new Date(transaction.date).toLocaleDateString()}
+                              {isIncome ? 'Income' : formatCategory(transaction.category)} • {new Date(transaction.date).toLocaleDateString()}
                             </div>
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0 ml-3">
-                          <div className="font-semibold text-slate-800 text-sm lg:text-base">${Math.abs(transaction.amount).toFixed(2)}</div>
-                          {transaction.is_deductible === true && (
-                            <div className="text-xs text-emerald-600">+${Math.abs(transaction.amount).toFixed(2)} saved</div>
+                          <div className={`font-semibold text-sm lg:text-base ${isIncome ? 'text-emerald-600' : 'text-slate-800'}`}>
+                            {isIncome ? '+' : ''}${amount.toFixed(2)}
+                          </div>
+                          {transaction.is_deductible === true && !isIncome && transaction.savings_percentage !== undefined && transaction.savings_percentage > 0 && (
+                            <div className="text-xs text-emerald-600">+${(amount * transaction.savings_percentage / 100 * 0.3).toFixed(2)} saved</div>
                           )}
                         </div>
                       </div>

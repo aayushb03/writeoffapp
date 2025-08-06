@@ -38,6 +38,8 @@ export async function GET(request: NextRequest) {
       is_deductible: transaction.is_deductible,
       deductible_reason: transaction.deductible_reason,
       deduction_score: transaction.deduction_score,
+      savings_percentage: transaction.savings_percentage || 30.0,
+      notes: transaction.notes,
       description: transaction.merchant_name,
       account_id: transaction.account_id,
     })) || [];

@@ -10,17 +10,35 @@ export async function analyzeTransactionDeductibility(transaction: any) {
     Amount: $${transaction.amount}
     Category: ${transaction.category}
     Date: ${transaction.date}
+    Notes: ${transaction.notes}
     
     Determine if this transaction is tax deductible for a business owner. Consider:
     1. Is it a legitimate business expense?
     2. Is it ordinary and necessary for the business?
     3. Is it directly related to business operations?
+    4. What percentage of the transaction amount is deductible?
     
-    Respond in this exact format:
-    Yes/No, [brief reason], [confidence score]%
+    IMPORTANT: If the transaction amount is negative (income/revenue), it is NOT deductible and should have deduction_percent = 0.
     
-    Example: "Yes, Office supplies for business operations, 85%"
-    Example: "No, Personal entertainment expense, 95%"
+    Respond with a JSON object in this exact format:
+    {
+      "is_deductible": true/false,
+      "deduction_score": 0.85,
+      "deduction_percent": 100,
+      "deduction_reason": "Detailed explanation of why it is or isn't deductible"
+    }
+    
+    Where:
+    - is_deductible: true if deductible, false if not
+    - deduction_score: Confidence score from 0.0 to 1.0 (0.0 = not deductible, 1.0 = definitely deductible)
+    - deduction_percent: What percentage of the transaction amount is deductible (0-100). For example, if only 50% of a meal is deductible, return 50. If the entire amount is deductible, return 100.
+    - deduction_reason: Detailed explanation of why it is or isn't deductible
+    
+    Examples:
+    - Office supplies: {"is_deductible": true, "deduction_score": 0.95, "deduction_percent": 100, "deduction_reason": "Office supplies are fully deductible as they are ordinary and necessary for business operations"}
+    - Business meal: {"is_deductible": true, "deduction_score": 0.85, "deduction_percent": 50, "deduction_reason": "Business meals are 50% deductible under current tax law"}
+    - Personal expense: {"is_deductible": false, "deduction_score": 0.95, "deduction_percent": 0, "deduction_reason": "This is a personal expense not related to business operations"}
+    - Income/Refund: {"is_deductible": false, "deduction_score": 0.0, "deduction_percent": 0, "deduction_reason": "This is income/revenue and not a deductible expense"}
   `
 
   try {
@@ -29,45 +47,60 @@ export async function analyzeTransactionDeductibility(transaction: any) {
       messages: [
         {
           role: 'system',
-          content: 'You are a tax expert specializing in business deductions. Provide accurate, conservative analysis.'
+          content: 'You are a tax expert specializing in business deductions. Provide accurate, conservative analysis. Always respond with valid JSON in the exact format requested.'
         },
         {
           role: 'user',
           content: prompt
         }
       ],
-      max_tokens: 150,
+      max_tokens: 300,
       temperature: 0.1,
     })
 
     const content = response.choices[0].message.content || ''
     
-    // Parse the response
-    const isYes = /^yes\b/i.test(content.trim())
-    let reason = ''
-    let deduction_score = null
-    
-    const match = content.match(/^(yes|no)[,\s]+(.+?)[,\s]+(\d{1,3})%/i)
-    if (match) {
-      reason = match[2].trim()
-      deduction_score = Math.min(100, Math.max(0, parseInt(match[3], 10))) / 100 // Convert to 0-1 scale
-    } else {
-      // Fallback parsing
-      const scoreMatch = content.match(/(\d{1,3})\s*%/)
-      deduction_score = scoreMatch ? Math.min(100, Math.max(0, parseInt(scoreMatch[1], 10))) / 100 : null
-      const reasonMatch = content.match(/^[^,]+,\s*(.+?),\s*\d{1,3}%/)
-      reason = reasonMatch ? reasonMatch[1].trim() : 'No reason provided'
+    // Extract JSON from response
+    const jsonMatch = content.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) {
+      console.error('No valid JSON found in response:', content)
+      return { success: false, error: 'Invalid response format' }
     }
 
-    if (reason.length > 0) {
-      reason = reason.charAt(0).toUpperCase() + reason.slice(1)
-    }
+    try {
+      const analysis = JSON.parse(jsonMatch[0])
+      
+      // Validate required fields
+      if (typeof analysis.is_deductible !== 'boolean') {
+        console.error('Invalid is_deductible field:', analysis)
+        return { success: false, error: 'Invalid is_deductible field' }
+      }
+      
+      if (typeof analysis.deduction_score !== 'number' || analysis.deduction_score < 0 || analysis.deduction_score > 1) {
+        console.error('Invalid deduction_score field:', analysis)
+        return { success: false, error: 'Invalid deduction_score field' }
+      }
+      
+      if (typeof analysis.deduction_percent !== 'number' || analysis.deduction_percent < 0 || analysis.deduction_percent > 100) {
+        console.error('Invalid deduction_percent field:', analysis)
+        return { success: false, error: 'Invalid deduction_percent field' }
+      }
+      
+      if (typeof analysis.deduction_reason !== 'string' || analysis.deduction_reason.trim() === '') {
+        console.error('Invalid deduction_reason field:', analysis)
+        return { success: false, error: 'Invalid deduction_reason field' }
+      }
 
-    return {
-      success: true,
-      is_deductible: isYes,
-      deductible_reason: reason,
-      deduction_score,
+      return {
+        success: true,
+        is_deductible: analysis.is_deductible,
+        deduction_score: analysis.deduction_score,
+        deduction_percent: analysis.deduction_percent,
+        deduction_reason: analysis.deduction_reason,
+      }
+    } catch (parseError) {
+      console.error('Error parsing JSON response:', parseError, 'Content:', content)
+      return { success: false, error: 'Failed to parse JSON response' }
     }
   } catch (error) {
     console.error('Error analyzing transaction:', error)
@@ -85,9 +118,9 @@ export async function analyzeAllTransactions(userId: string) {
     const analysisPromises = transactions.map(async (transaction) => {
       const analysis = await analyzeTransactionDeductibility(transaction)
       if (analysis.success) {
-        await updateTransaction(transaction.trans_id, {
+        await updateTransaction(transaction.id, {
           is_deductible: analysis.is_deductible,
-          deductible_reason: analysis.deductible_reason,
+          deductible_reason: analysis.deduction_reason,
           deduction_score: analysis.deduction_score || undefined,
         })
       }
@@ -111,7 +144,7 @@ export async function generateTaxSummary(userId: string) {
       return { success: false, error: 'No transactions found' }
     }
 
-    const deductibleTransactions = transactions.filter(t => t.is_deductible)
+    const deductibleTransactions = transactions.filter(t => t.isDeductible)
     const totalDeductible = deductibleTransactions.reduce((sum, t) => sum + t.amount, 0)
 
     const prompt = `
@@ -122,7 +155,7 @@ export async function generateTaxSummary(userId: string) {
       Total deductible amount: $${totalDeductible}
       
       Deductible transactions:
-      ${deductibleTransactions.map(t => `- ${t.merchant_name}: $${t.amount} (${t.deductible_reason})`).join('\n')}
+      ${deductibleTransactions.map(t => `- ${t.merchant_name}: $${t.amount} (${t.deductibleReason})`).join('\n')}
       
       Provide a brief summary of the tax implications and any recommendations.
     `

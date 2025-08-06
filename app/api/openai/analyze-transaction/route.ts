@@ -34,16 +34,18 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Analysis complete:', {
       deductible: result.is_deductible,
-      reason: result.deductible_reason,
-      confidence: `${Math.round((result.deduction_score || 0) * 100)}%`
+      reason: result.deduction_reason,
+      confidence: `${Math.round((result.deduction_score || 0) * 100)}%`,
+      deduction_percent: result.deduction_percent
     })
 
     return NextResponse.json({
       success: true,
       analysis: {
         is_deductible: result.is_deductible,
-        deductible_reason: result.deductible_reason,
+        deduction_reason: result.deduction_reason,
         deduction_score: result.deduction_score,
+        deduction_percent: result.deduction_percent,
         confidence_percentage: Math.round((result.deduction_score || 0) * 100)
       }
     })
