@@ -17,7 +17,7 @@
 
 import React, { useState, useEffect } from 'react';
 
-const writeOffLogo = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iOCIgZmlsbD0iIzNiODJmNiIvPgo8cGF0aCBkPSJNOC41IDEwSDIzLjVMMjEuNSAyMkg2LjVMOC41IDEwWiIgZmlsbD0id2hpdGUiLz4KPHBhdGggZD0iTTEwIDEySDIyTDIwLjUgMjBIOC41TDEwIDEyWiIgZmlsbD0iIzNiODJmNiIvPgo8L3N2Zz4K';
+const writeOffLogo = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iOCIgZmlsbD0iIzMzNjZDQyIvPgo8dGV4dCB4PSIxNiIgeT0iMjIiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxOCIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IndoaXRlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5XPC90ZXh0Pgo8L3N2Zz4K';
 
 // Icon components
 const DollarSignIcon = () => (
@@ -239,10 +239,10 @@ export default function DashboardScreen({
         {/* Welcome Section */}
         <div className="mb-6 lg:mb-8 animate-[fadeIn_0.4s_ease-out_forwards]">
           <div className="text-center mb-6 lg:mb-8">
-            <h2 className="text-2xl lg:text-3xl font-medium text-white mb-2 lg:mb-3 tracking-tight">
-              Welcome back, <span className="text-blue-200">{profile?.name?.split(' ')[0] || 'there'}</span>
+            <h2 className="text-2xl lg:text-3xl font-bold text-white mb-2 lg:mb-3 tracking-tight">
+              Welcome back, <span className="text-white">{profile?.name?.split(' ')[0] || 'there'}</span>
             </h2>
-            <p className="text-blue-100 text-base lg:text-lg">
+            <p className="text-blue-100 text-base lg:text-lg font-bold">
               Here's your tax optimization overview
             </p>
           </div>

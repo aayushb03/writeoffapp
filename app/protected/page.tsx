@@ -14,6 +14,7 @@ import { DeductionsDetailScreen } from "@/components/deductions-detail-screen";
 import { ExpensesDetailScreen } from "@/components/expenses-detail-screen";
 import { BanksDetailScreen } from "@/components/banks-detail-screen";
 import { ProfitLossDetailScreen } from "@/components/profit-loss-detail-screen";
+import { CategoriesScreen } from "@/components/categories-screen";
 import { getUserProfile } from "@/lib/database/profiles";
 import { testDatabaseConnection } from "@/lib/database/test";
 import { syncTransactions } from "@/lib/api";
@@ -49,7 +50,7 @@ export default function ProtectedPage() {
   const [userProfile, setUserProfile] = useState<any>(null);
   const [hasProfile, setHasProfile] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [currentScreen, setCurrentScreen] = useState<'dashboard' | 'settings' | 'debug' | 'add-expense' | 'receipt-upload' | 'tax-calendar' | 'transactions' | 'edit-expense' | 'deductions-detail' | 'expenses-detail' | 'banks-detail' | 'profit-loss-detail'>('dashboard');
+  const [currentScreen, setCurrentScreen] = useState<'dashboard' | 'settings' | 'debug' | 'add-expense' | 'receipt-upload' | 'tax-calendar' | 'transactions' | 'edit-expense' | 'deductions-detail' | 'expenses-detail' | 'banks-detail' | 'profit-loss-detail' | 'categories'>('dashboard');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
@@ -241,6 +242,8 @@ export default function ProtectedPage() {
       setCurrentScreen('banks-detail');
     } else if (screen === 'profit-loss-detail') {
       setCurrentScreen('profit-loss-detail');
+    } else if (screen === 'categories') {
+      setCurrentScreen('categories');
     }
     // You can add more screen navigation logic here
   };
@@ -419,6 +422,16 @@ export default function ProtectedPage() {
       return (
         <ProfitLossDetailScreen
           onNavigate={handleNavigate}
+          transactions={transactions}
+        />
+      );
+    }
+
+    if (currentScreen === 'categories') {
+      return (
+        <CategoriesScreen
+          user={user}
+          onBack={() => setCurrentScreen('dashboard')}
           transactions={transactions}
         />
       );
