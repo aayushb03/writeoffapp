@@ -14,7 +14,7 @@ interface Transaction {
   category: string;
   date: string;
   type?: 'expense' | 'income';
-  is_deductible: boolean;
+  is_deductible?: boolean | null;
   deductible_reason?: string;
   deduction_score?: number;
   description?: string;
@@ -31,6 +31,7 @@ interface CategoriesScreenProps {
   };
   onBack: () => void;
   transactions: Transaction[];
+  onTransactionClick?: (transaction: Transaction) => void;
 }
 
 const formatCategory = (category: string): string => {
@@ -58,13 +59,22 @@ const getCategoryIcon = (category: string) => {
 export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ 
   user, 
   onBack, 
-  transactions 
+  transactions,
+  onTransactionClick 
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [showDeductionsTooltip, setShowDeductionsTooltip] = useState(false);
+  const [showSavingsTooltip, setShowSavingsTooltip] = useState(false);
 
   // Filter deductible transactions
   const deductibleTransactions = transactions.filter(t => t.is_deductible === true && t.amount > 0);
+
+  // Debug what we're receiving
+  console.log('Categories Screen - transactions received:', transactions);
+  console.log('Categories Screen - transactions length:', transactions.length);
+  console.log('Categories Screen - deductible transactions:', deductibleTransactions);
+  console.log('Categories Screen - deductible transactions length:', deductibleTransactions.length);
 
   // Group transactions by category
   const categoryGroups = deductibleTransactions.reduce((acc, transaction) => {
@@ -109,7 +119,8 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({
     setExpandedCategories(newExpanded);
   };
 
-  const totalTaxSavings = categoryData.reduce((sum, cat) => sum + cat.taxSavings, 0);
+  // Calculate total tax savings directly from total deductions
+  const totalTaxSavings = totalDeductions * 0.30;
   const activeCategories = categoryData.length;
 
   return (
@@ -152,14 +163,56 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({
             <div className="text-sm text-gray-600">Active Categories</div>
           </div>
           
-          <div className="bg-green-100 rounded-2xl p-6 shadow-lg">
-            <div className="text-2xl font-bold text-green-700 mb-1">${totalDeductions.toFixed(0)}</div>
-            <div className="text-sm text-green-600">Total Deductions</div>
+          <div className="bg-white rounded-2xl p-6 shadow-lg">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="text-2xl font-bold text-gray-900">${totalDeductions.toFixed(0)}</div>
+              <div className="relative">
+                <Info
+                  className="w-4 h-4 text-gray-400 hover:text-gray-600 cursor-help transition-colors"
+                  onMouseEnter={() => setShowDeductionsTooltip(true)}
+                  onMouseLeave={() => setShowDeductionsTooltip(false)}
+                />
+                {showDeductionsTooltip && (
+                  <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 z-50 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-lg shadow-lg p-3 w-80 border border-gray-100">
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2">
+                        <div className="w-2 h-2 bg-white border-l border-t border-gray-100 rotate-45 transform origin-center"></div>
+                      </div>
+                      <p className="text-sm text-gray-700 leading-relaxed">
+                        These are all your business-related expenses that qualify as tax-deductible based on category rules. The total shown here reflects the sum of deductible portions from all transactions.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="text-sm text-gray-600">Total Deductions</div>
           </div>
           
-          <div className="bg-white rounded-2xl p-6 shadow-lg">
-            <div className="text-2xl font-bold text-gray-900 mb-1">${totalTaxSavings.toFixed(0)}</div>
-            <div className="text-sm text-gray-600">Tax Savings</div>
+          <div className="bg-green-100 rounded-2xl p-6 shadow-lg">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="text-2xl font-bold text-green-700">${totalTaxSavings.toFixed(0)}</div>
+              <div className="relative">
+                <Info
+                  className="w-4 h-4 text-green-500 hover:text-green-700 cursor-help transition-colors"
+                  onMouseEnter={() => setShowSavingsTooltip(true)}
+                  onMouseLeave={() => setShowSavingsTooltip(false)}
+                />
+                {showSavingsTooltip && (
+                  <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 z-50 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-lg shadow-lg p-3 w-80 border border-gray-100">
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2">
+                        <div className="w-2 h-2 bg-white border-l border-t border-gray-100 rotate-45 transform origin-center"></div>
+                      </div>
+                      <p className="text-sm text-gray-700 leading-relaxed">
+                        This is your estimated reduction in taxes owed based on your current deductible expenses. It's calculated by multiplying your total deductions by your estimated tax rate.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="text-sm text-green-600">Tax Savings</div>
           </div>
         </div>
 
@@ -229,7 +282,11 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({
                       <h4 className="font-semibold text-gray-900 mb-4">Transactions in this category</h4>
                       <div className="space-y-3">
                         {categoryData.transactions.map((transaction) => (
-                          <div key={transaction.id} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                          <div 
+                            key={transaction.id} 
+                            className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 cursor-pointer hover:shadow-md hover:border-blue-200 transition-all duration-200"
+                            onClick={() => onTransactionClick?.(transaction)}
+                          >
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-3 flex-1">
                                 <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></div>

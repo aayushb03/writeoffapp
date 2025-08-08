@@ -32,7 +32,9 @@ export async function analyzeTransactionDeductibility(transaction: any) {
     - is_deductible: true if deductible, false if not
     - deduction_score: Confidence score from 0.0 to 1.0 (0.0 = not deductible, 1.0 = definitely deductible)
     - deduction_percent: What percentage of the transaction amount is deductible (0-100). For example, if only 50% of a meal is deductible, return 50. If the entire amount is deductible, return 100.
-    - deduction_reason: Detailed explanation of why it is or isn't deductible
+    - deduction_reason: Detailed explanation of why it is or isn't deductible. It should be clear, concise, and based on tax rules.
+  
+    Use conservative estimates and avoid over-claiming deductions.
     
     Examples:
     - Office supplies: {"is_deductible": true, "deduction_score": 0.95, "deduction_percent": 100, "deduction_reason": "Office supplies are fully deductible as they are ordinary and necessary for business operations"}
@@ -43,7 +45,7 @@ export async function analyzeTransactionDeductibility(transaction: any) {
 
   try {
     const response = await openaiClient.chat.completions.create({
-      model: 'gpt-4',
+      model: 'gpt-4.1-mini',
       messages: [
         {
           role: 'system',
@@ -54,7 +56,7 @@ export async function analyzeTransactionDeductibility(transaction: any) {
           content: prompt
         }
       ],
-      max_tokens: 300,
+      max_tokens: 150,
       temperature: 0.1,
     })
 
@@ -161,7 +163,7 @@ export async function generateTaxSummary(userId: string) {
     `
 
     const response = await openaiClient.chat.completions.create({
-      model: 'gpt-4',
+      model: 'gpt-4.1-mini',
       messages: [
         {
           role: 'system',

@@ -80,6 +80,7 @@ export async function updateTransaction(transactionId: string, updates: {
   is_deductible?: boolean
   deductible_reason?: string
   deduction_score?: number
+  notes?: string // allow saving user notes/context
 }) {
   return await supabase
     .from('transactions')
@@ -131,4 +132,4 @@ export async function getTransactionsByDateRange(userId: string, startDate: stri
     .gte('date', startDate)
     .lte('date', endDate)
     .order('date', { ascending: false })
-} 
+}

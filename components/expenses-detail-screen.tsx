@@ -12,7 +12,7 @@ interface Transaction {
   category: string;
   date: string;
   type?: 'expense' | 'income';
-  is_deductible: boolean;
+  is_deductible?: boolean | null;
   deductible_reason?: string;
   deduction_score?: number;
   description?: string;

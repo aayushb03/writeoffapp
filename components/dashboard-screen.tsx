@@ -152,6 +152,12 @@ export default function DashboardScreen({
   let totalDeductions = 0;
   let uncategorizedCount = 0;
 
+  // Calculate transactions that need review (uncategorized OR low confidence)
+  const needsReviewCount = transactions.filter(t => 
+    t.is_deductible === null || // Uncategorized transactions
+    (t.deduction_score !== undefined && t.deduction_score < 0.75) // Low confidence transactions
+  ).length;
+
   // Fallback calculations if API data not available
   if (!taxSavingsData) {
     const currentDate = new Date();
@@ -166,13 +172,13 @@ export default function DashboardScreen({
         totalDeductions += deductibleAmount;
       }
       
-      if (transaction && transaction.is_deductible === null) {
+      if (transaction && (transaction.is_deductible === null || (transaction.deduction_score !== undefined && transaction.deduction_score < 0.75))) {
         uncategorizedCount++;
       }
     }
   } else {
     totalDeductions = taxSavingsData.deductions.yearToDate;
-    uncategorizedCount = transactions.filter(t => t.is_deductible === null).length;
+    uncategorizedCount = needsReviewCount;
   }
 
   const categoryBreakdown: Record<string, number> = {};
@@ -330,10 +336,10 @@ export default function DashboardScreen({
               </div>
               <div className="border-t border-slate-100 pt-3">
                 <p className="text-xs lg:text-sm text-slate-600 font-medium mb-1">
-                  {uncategorizedCount > 0 ? 'Review pending transactions' : 'All caught up!'}
+                  {uncategorizedCount > 0 ? 'Review transactions with low confidence' : 'All caught up!'}
                 </p>
                 <p className="text-xs text-slate-500">
-                  {uncategorizedCount > 0 ? 'Categorize to maximize savings' : 'Everything is organized'}
+                  {uncategorizedCount > 0 ? 'Review uncategorized and low-confidence transactions' : 'Everything is organized'}
                 </p>
               </div>
             </button>
@@ -656,7 +662,7 @@ export default function DashboardScreen({
                   </div>
                 </button>
                 <button 
-                  onClick={() => onNavigate('schedule-c')} 
+                  onClick={() => onNavigate('schedule-c-export')} 
                   className="w-full p-3 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg text-left transition-colors"
                 >
                   <div className="flex items-center gap-2 lg:gap-3">

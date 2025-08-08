@@ -51,6 +51,18 @@ export default {
           "4": "hsl(var(--chart-4))",
           "5": "hsl(var(--chart-5))",
         },
+        blue: {
+          50:  '#EEF5FF',
+          100: '#D9E9FF',
+          200: '#B3D3FF',
+          300: '#8CBDFF',
+          400: '#5D9DFF',
+          500: '#2F7DFF',
+          600: '#1D64FA', // primary brand shade (matches waitlist CTA)
+          700: '#124ED4',
+          800: '#0D3EA8',
+          900: '#0A2F7D'
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

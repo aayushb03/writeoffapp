@@ -24,6 +24,12 @@ interface DashboardProps {
 export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
   const [profile, setProfile] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [taxSavings, setTaxSavings] = useState(0);
+  const [newDeductions, setNewDeductions] = useState(0);
+  const [needsReview, setNeedsReview] = useState(0);
+  const [totalExpenses, setTotalExpenses] = useState(0);
+  const [showRevenue, setShowRevenue] = useState(false);
+  const userTaxRate = 0.3; // Example tax rate, replace with actual value
   const supabase = createClient();
 
   useEffect(() => {
@@ -51,13 +57,56 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
       }
     };
 
+    const fetchDashboardData = async () => {
+      try {
+        const { data: transactions, error } = await supabase
+          .from('transactions')
+          .select('amount, is_deductible, created_at');
+
+        if (error) {
+          console.error('Error fetching transactions:', error);
+          return;
+        }
+
+        const now = new Date();
+        const thirtyDaysAgo = new Date(now.setDate(now.getDate() - 30));
+
+        const taxSavingsValue = transactions
+          .filter((t) => t.is_deductible === true)
+          .reduce((sum, t) => sum + t.amount * userTaxRate, 0);
+
+        const newDeductionsCount = transactions
+          .filter((t) => t.is_deductible === true && new Date(t.created_at) >= thirtyDaysAgo).length;
+
+        const needsReviewCount = transactions.filter((t) => t.is_deductible === null).length;
+
+        const totalExpensesValue = transactions
+          .filter((t) => t.amount > 0) // Exclude revenue transactions (negative amounts)
+          .reduce((sum, t) => sum + t.amount, 0);
+
+        setTaxSavings(taxSavingsValue);
+        setNewDeductions(newDeductionsCount);
+        setNeedsReview(needsReviewCount);
+        setTotalExpenses(totalExpensesValue);
+      } catch (error) {
+        console.error('Error processing dashboard data:', error);
+      }
+    };
+
     fetchProfile();
+    fetchDashboardData();
   }, [user.id, supabase]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     window.location.href = '/';
   };
+
+  const filteredTransactions = (await supabase
+    .from('transactions')
+    .select('amount, is_deductible, created_at')).data.filter((transaction) =>
+    showRevenue ? transaction.amount < 0 : transaction.amount > 0
+  );
 
   if (isLoading) {
     return (
@@ -115,8 +164,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 <DollarSign className="w-6 h-6 text-emerald-600" />
               </div>
               <div>
-                <p className="text-sm text-slate-600">Total Deductions</p>
-                <p className="text-2xl font-bold text-slate-900">$0</p>
+                <p className="text-sm text-slate-600">Tax Savings</p>
+                <p className="text-2xl font-bold text-slate-900">${taxSavings.toFixed(2)}</p>
               </div>
             </div>
           </Card>
@@ -128,7 +177,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
               </div>
               <div>
                 <p className="text-sm text-slate-600">Tracked Expenses</p>
-                <p className="text-2xl font-bold text-slate-900">$0</p>
+                <p className="text-2xl font-bold text-slate-900">${totalExpenses.toFixed(2)}</p>
               </div>
             </div>
           </Card>
@@ -151,8 +200,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 <TrendingUp className="w-6 h-6 text-orange-600" />
               </div>
               <div>
-                <p className="text-sm text-slate-600">Tax Savings</p>
-                <p className="text-2xl font-bold text-slate-900">$0</p>
+                <p className="text-sm text-slate-600">New Deductions</p>
+                <p className="text-2xl font-bold text-slate-900">{newDeductions}</p>
               </div>
             </div>
           </Card>
@@ -285,6 +334,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
               </Button>
             </Card>
           </div>
+        </div>
+
+        {/* Toggle Button */}
+        <div className="col-span-1 md:col-span-4 flex justify-center mt-4">
+          <Button
+            variant="outline"
+            onClick={() => setShowRevenue(!showRevenue)}
+            className="text-blue-600 border-blue-200 hover:bg-blue-50"
+          >
+            {showRevenue ? 'Show Expenses' : 'Show Revenue'}
+          </Button>
+        </div>
+
+        {/* Filtered Transactions */}
+        <div className="space-y-4">
+          {filteredTransactions.map((transaction) => (
+            <Card key={transaction.id} className="p-4">
+              <div className="flex justify-between">
+                <span>{transaction.merchant_name || 'Unknown Merchant'}</span>
+                <span className={transaction.amount > 0 ? 'text-green-600' : 'text-red-600'}>
+                  ${Math.abs(transaction.amount).toFixed(2)}
+                </span>
+              </div>
+            </Card>
+          ))}
         </div>
       </div>
     </div>

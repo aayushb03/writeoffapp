@@ -142,7 +142,7 @@ Please analyze this transaction and respond with a JSON object containing:
 }`;
 
         const completion = await openai.chat.completions.create({
-          model: "gpt-4",
+          model: "gpt-4.1-mini",
           messages: [
             {
               role: "system",
@@ -253,4 +253,4 @@ Please analyze this transaction and respond with a JSON object containing:
       { status: 500 }
     );
   }
-} 
+}

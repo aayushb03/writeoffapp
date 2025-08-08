@@ -467,6 +467,29 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
         {/* Additional Settings */}
         <Card className="p-6 bg-white border-0 shadow-xl mt-6">
+          <h3 className="text-lg font-semibold text-slate-900 mb-4">Bank Account Management</h3>
+          <div className="space-y-4">
+            <Button 
+              onClick={() => onNavigate('plaid-link')}
+              className="w-full h-14 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl flex items-center justify-center gap-3"
+            >
+              <DollarSign className="w-5 h-5" />
+              Connect Bank Account with Plaid
+            </Button>
+            
+            <Button 
+              onClick={() => onNavigate('plaid')}
+              variant="outline"
+              className="w-full h-12 justify-center gap-3 rounded-xl"
+            >
+              <DollarSign className="w-4 h-4" />
+              Manage Connected Accounts
+            </Button>
+          </div>
+        </Card>
+
+        {/* Quick Actions */}
+        <Card className="p-6 bg-white border-0 shadow-xl mt-6">
           <h3 className="text-lg font-semibold text-slate-900 mb-4">Quick Actions</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Button 
@@ -476,15 +499,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             >
               <ArrowLeft className="w-4 h-4" />
               Back to Dashboard
-            </Button>
-            
-            <Button 
-              onClick={() => onNavigate('plaid')}
-              variant="outline"
-              className="h-12 justify-start gap-3"
-            >
-              <DollarSign className="w-4 h-4" />
-              Manage Bank Accounts
             </Button>
           </div>
         </Card>

@@ -38,7 +38,11 @@ export async function GET(request: NextRequest) {
       is_deductible: transaction.is_deductible,
       deductible_reason: transaction.deductible_reason,
       deduction_score: transaction.deduction_score,
-      savings_percentage: transaction.savings_percentage || 30.0,
+      // Provide estimated_deduction_percent from DB value (no hard default)
+      estimated_deduction_percent: transaction.savings_percentage ?? transaction.deduction_percent ?? null,
+      // Keep original fields for backward compatibility (no 30% hardcode)
+      savings_percentage: transaction.savings_percentage ?? null,
+      deduction_percent: transaction.deduction_percent ?? null,
       notes: transaction.notes,
       description: transaction.merchant_name,
       account_id: transaction.account_id,
@@ -49,6 +53,17 @@ export async function GET(request: NextRequest) {
       transformedCount: transformedTransactions.length,
       userId: userId,
     });
+
+    // Debug: check first 5 transactions' is_deductible values
+    console.log('🔍 First 5 transactions is_deductible values:', 
+      transactions?.slice(0, 5).map(t => ({
+        id: t.trans_id,
+        merchant: t.merchant_name,
+        category: t.category,
+        is_deductible: t.is_deductible,
+        is_deductible_type: typeof t.is_deductible,
+      }))
+    );
 
     return NextResponse.json({
       success: true,
@@ -62,4 +77,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-} 
+}

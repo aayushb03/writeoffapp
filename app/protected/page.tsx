@@ -10,11 +10,16 @@ import { AddExpenseScreen } from "@/components/add-expense-screen";
 import { ReceiptUploadScreen } from "@/components/receipt-upload-screen";
 import { TaxCalendarScreen } from "@/components/tax-calendar-screen";
 import { TransactionsListScreen } from "@/components/transactions-list-screen";
+import { ReviewTransactionsScreen } from "@/components/review-transactions-screen";
+import { ScheduleCExportScreen } from "@/components/schedule-c-export-screen";
 import { DeductionsDetailScreen } from "@/components/deductions-detail-screen";
 import { ExpensesDetailScreen } from "@/components/expenses-detail-screen";
 import { BanksDetailScreen } from "@/components/banks-detail-screen";
 import { ProfitLossDetailScreen } from "@/components/profit-loss-detail-screen";
 import { CategoriesScreen } from "@/components/categories-screen";
+import { PlaidLinkScreen } from "@/components/plaid-link-screen";
+import { PlaidScreen } from "@/components/plaid-screen";
+import { TransactionDetailScreen } from "@/components/transaction-detail-screen";
 import { getUserProfile } from "@/lib/database/profiles";
 import { testDatabaseConnection } from "@/lib/database/test";
 import { syncTransactions } from "@/lib/api";
@@ -38,7 +43,7 @@ interface Transaction {
   category: string;
   date: string;
   type?: 'expense' | 'income';
-  is_deductible: boolean;
+  is_deductible?: boolean | null;
   deductible_reason?: string;
   deduction_score?: number;
   description?: string;
@@ -50,9 +55,10 @@ export default function ProtectedPage() {
   const [userProfile, setUserProfile] = useState<any>(null);
   const [hasProfile, setHasProfile] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [currentScreen, setCurrentScreen] = useState<'dashboard' | 'settings' | 'debug' | 'add-expense' | 'receipt-upload' | 'tax-calendar' | 'transactions' | 'edit-expense' | 'deductions-detail' | 'expenses-detail' | 'banks-detail' | 'profit-loss-detail' | 'categories'>('dashboard');
+  const [currentScreen, setCurrentScreen] = useState<'dashboard' | 'settings' | 'debug' | 'add-expense' | 'receipt-upload' | 'tax-calendar' | 'transactions' | 'review-transactions' | 'schedule-c-export' | 'edit-expense' | 'deductions-detail' | 'expenses-detail' | 'banks-detail' | 'profit-loss-detail' | 'categories' | 'plaid-link' | 'plaid' | 'transaction-detail'>('dashboard');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [viewingTransaction, setViewingTransaction] = useState<Transaction | null>(null);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
   const [analyzingTransactions, setAnalyzingTransactions] = useState(false);
   const [bankConnected, setBankConnected] = useState(false);
@@ -234,6 +240,10 @@ export default function ProtectedPage() {
       setCurrentScreen('tax-calendar');
     } else if (screen === 'transactions') {
       setCurrentScreen('transactions');
+    } else if (screen === 'review-transactions') {
+      setCurrentScreen('review-transactions');
+    } else if (screen === 'schedule-c-export') {
+      setCurrentScreen('schedule-c-export');
     } else if (screen === 'deductions-detail') {
       setCurrentScreen('deductions-detail');
     } else if (screen === 'expenses-detail') {
@@ -244,8 +254,20 @@ export default function ProtectedPage() {
       setCurrentScreen('profit-loss-detail');
     } else if (screen === 'categories') {
       setCurrentScreen('categories');
+    } else if (screen === 'plaid-link') {
+      setCurrentScreen('plaid-link');
+    } else if (screen === 'plaid') {
+      setCurrentScreen('plaid');
+    } else if (screen === 'transaction-detail') {
+      setCurrentScreen('transaction-detail');
     }
     // You can add more screen navigation logic here
+  };
+
+  // Handle viewing transaction details
+  const handleViewTransaction = (transaction: Transaction) => {
+    setViewingTransaction(transaction);
+    setCurrentScreen('transaction-detail');
   };
 
   // Handle sign out
@@ -279,6 +301,16 @@ export default function ProtectedPage() {
   const handleEditTransaction = (transaction: Transaction) => {
     setEditingTransaction(transaction);
     setCurrentScreen('add-expense');
+  };
+
+  // Handle transaction update (for review screen)
+  const handleTransactionUpdate = (updatedTransaction: Transaction) => {
+    setTransactions(prevTransactions => 
+      prevTransactions.map(t => 
+        t.id === updatedTransaction.id ? updatedTransaction : t
+      )
+    );
+    setViewingTransaction(prev => prev && prev.id === updatedTransaction.id ? { ...prev, ...updatedTransaction } : prev);
   };
 
   // Handle receipt upload completion
@@ -379,7 +411,29 @@ export default function ProtectedPage() {
         <TransactionsListScreen
           user={user}
           onBack={() => setCurrentScreen('dashboard')}
-          onEditTransaction={handleEditTransaction}
+          onEditTransaction={handleViewTransaction} // changed from handleEditTransaction to open detail screen
+          transactions={transactions}
+        />
+      );
+    }
+
+    if (currentScreen === 'review-transactions') {
+      return (
+        <ReviewTransactionsScreen
+          user={user}
+          onBack={() => setCurrentScreen('dashboard')}
+          transactions={transactions}
+          onTransactionUpdate={handleTransactionUpdate}
+          onTransactionClick={handleViewTransaction}
+        />
+      );
+    }
+
+    if (currentScreen === 'schedule-c-export') {
+      return (
+        <ScheduleCExportScreen
+          user={user}
+          onBack={() => setCurrentScreen('dashboard')}
           transactions={transactions}
         />
       );
@@ -401,6 +455,7 @@ export default function ProtectedPage() {
           user={user}
           onBack={() => setCurrentScreen('dashboard')}
           transactions={transactions}
+          onTransactionClick={(t) => handleViewTransaction(t)}
         />
       );
     }
@@ -433,6 +488,37 @@ export default function ProtectedPage() {
           user={user}
           onBack={() => setCurrentScreen('dashboard')}
           transactions={transactions}
+          onTransactionClick={(transaction) => handleViewTransaction(transaction)}
+        />
+      );
+    }
+
+    if (currentScreen === 'plaid-link') {
+      return (
+        <PlaidLinkScreen
+          user={user}
+          onSuccess={() => setCurrentScreen('dashboard')}
+          onBack={() => setCurrentScreen('settings')}
+        />
+      );
+    }
+
+    if (currentScreen === 'plaid') {
+      return (
+        <PlaidScreen
+          user={user}
+          onBack={() => setCurrentScreen('settings')}
+          onConnect={() => setCurrentScreen('plaid-link')}
+        />
+      );
+    }
+
+    if (currentScreen === 'transaction-detail' && viewingTransaction) {
+      return (
+        <TransactionDetailScreen
+          transaction={viewingTransaction}
+          onBack={() => setCurrentScreen('dashboard')}
+          onSave={handleSaveTransaction}
         />
       );
     }
@@ -442,7 +528,7 @@ export default function ProtectedPage() {
         profile={userProfile}
         transactions={transactions}
         onNavigate={handleNavigate}
-        onTransactionClick={(transaction) => handleEditTransaction(transaction)}
+        onTransactionClick={(transaction) => handleViewTransaction(transaction)}
         onAnalyzeTransactions={async () => {
           setAnalyzingTransactions(true);
           try {
